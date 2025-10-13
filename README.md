@@ -252,3 +252,9 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 ---
 
 **VulnArk** - 简单实用的漏洞管理平台
+
+**赞助**
+![WechatIMG7](https://github.com/user-attachments/assets/97b153fa-e1a6-4047-aac5-f21194dd9cf6)
+![WechatIMG8](https://github.com/user-attachments/assets/7e76e848-a219-4be8-b6de-94bffc9b83d9)
+
+
