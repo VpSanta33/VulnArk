@@ -6,11 +6,15 @@ import (
 	"vulnark/internal/repository"
 	"vulnark/internal/service"
 	"vulnark/pkg/database"
+	"vulnark/pkg/storage"
 )
 
 // Container 依赖注入容器
 type Container struct {
 	DB *gorm.DB
+	
+	// Storage
+	StorageService storage.StorageService
 	
 	// Repositories
 	UserRepo           repository.UserRepository
@@ -82,6 +86,9 @@ func NewContainer() *Container {
 	// 初始化数据库连接
 	container.DB = database.GetDB()
 	
+	// 初始化存储服务
+	container.StorageService = storage.NewLocalStorageService()
+	
 	// 初始化 Repositories
 	container.initRepositories()
 	
@@ -147,7 +154,7 @@ func (c *Container) initServices() {
 func (c *Container) initControllers() {
 	c.UserController = controller.NewUserController(c.UserService, c.RoleService)
 	c.AssetController = controller.NewAssetController(c.AssetService)
-	c.VulnController = controller.NewVulnerabilityController(c.VulnService)
+	c.VulnController = controller.NewVulnerabilityController(c.VulnService, c.StorageService)
 	c.RoleController = controller.NewRoleController(c.RoleService)
 	c.AnalyticsController = controller.NewAnalyticsController(c.AnalyticsService)
 	c.AssignmentController = controller.NewAssignmentController(c.AssignmentService)
