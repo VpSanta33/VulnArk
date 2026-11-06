@@ -119,6 +119,15 @@ func (c *NotificationController) GetNotification(ctx *gin.Context) {
 		return
 	}
 
+	userID, exists := middleware.GetCurrentUserID(ctx)
+	if !exists {
+		utils.UnauthorizedResponse(ctx, "")
+		return
+	}
+	if notification.RecipientID != userID {
+		utils.NotFoundResponse(ctx, "通知不存在")
+		return
+	}
 	utils.SuccessResponse(ctx, notification)
 }
 

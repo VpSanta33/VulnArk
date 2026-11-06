@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          # Disposable CI service credentials; these are not deployment secrets.
+          MYSQL_ROOT_PASSWORD: ci_root_testing_only_password
+          MYSQL_ROOT_HOST: "%"
+        ports:
+          - 3306/tcp
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Install frontend dependencies from lockfile
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      - name: Lint frontend
+        working-directory: frontend
+        run: bun run lint
+
+      - name: Test frontend contracts and security regressions
+        working-directory: frontend
+        run: bun test
+
+      - name: Build frontend into backend/web
+        working-directory: frontend
+        run: bun run build
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.27.3
+          cache-dependency-path: backend/go.sum
+
+      - name: Install MySQL test client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes mysql-client
+
+      - name: Initialize three isolated empty test databases
+        env:
+          MYSQL_PWD: ci_root_testing_only_password
+          MYSQL_TEST_PORT: ${{ job.services.mysql.ports[3306] }}
+        run: |
+          mysql --protocol=TCP --host=127.0.0.1 --port="$MYSQL_TEST_PORT" --user=root <<'SQL'
+          CREATE DATABASE vulnark_migrations_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+          CREATE DATABASE vulnark_analytics_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+          CREATE DATABASE vulnark_ai_cleanup_test_ci CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+          CREATE USER 'migration_ci'@'%' IDENTIFIED BY 'ci_migration_testing_only_password';
+          CREATE USER 'analytics_ci'@'%' IDENTIFIED BY 'ci_analytics_testing_only_password';
+          CREATE USER 'ai_cleanup_ci'@'%' IDENTIFIED BY 'ci_ai_cleanup_testing_only_password';
+          -- Escape underscores: MySQL treats them as wildcards in schema grants.
+          GRANT ALL PRIVILEGES ON `vulnark\_migrations\_test`.* TO 'migration_ci'@'%';
+          GRANT ALL PRIVILEGES ON `vulnark\_analytics\_test`.* TO 'analytics_ci'@'%';
+          GRANT ALL PRIVILEGES ON `vulnark\_ai\_cleanup\_test\_ci`.* TO 'ai_cleanup_ci'@'%';
+          SQL
+
+      - name: Test backend with race detector and MySQL integrations
+        working-directory: backend
+        env:
+          # Each suite owns its own fresh database on this job's MySQL service.
+          VULNARK_MYSQL_TEST_DSN: migration_ci:ci_migration_testing_only_password@tcp(127.0.0.1:${{ job.services.mysql.ports[3306] }})/vulnark_migrations_test?charset=utf8mb4&parseTime=true
+          VULNARK_ANALYTICS_TEST_DSN: analytics_ci:ci_analytics_testing_only_password@tcp(127.0.0.1:${{ job.services.mysql.ports[3306] }})/vulnark_analytics_test?charset=utf8mb4&parseTime=true
+          VULNARK_AI_CLEANUP_MYSQL_TEST_DSN: ai_cleanup_ci:ci_ai_cleanup_testing_only_password@tcp(127.0.0.1:${{ job.services.mysql.ports[3306] }})/vulnark_ai_cleanup_test_ci?charset=utf8mb4&parseTime=true
+        run: go test -race ./...
+
+      - name: Vet backend
+        working-directory: backend
+        run: go vet ./...
+
+      - name: Build embedded application
+        working-directory: backend
+        run: go build -o "$RUNNER_TEMP/vulnark" ./cmd
+
+      - name: Check generated API documentation
+        working-directory: backend
+        run: |
+          go run github.com/swaggo/swag/cmd/swag@v1.16.6 init -g cmd/main.go -o docs
+          git diff --exit-code -- docs
+          if [ -n "$(git ls-files --others --exclude-standard -- docs)" ]; then
+            printf '%s\n' 'API generation produced untracked files; regenerate and commit backend/docs.'
+            exit 1
+          fi

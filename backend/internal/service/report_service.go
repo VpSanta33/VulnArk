@@ -2,11 +2,12 @@ package service
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"mime/multipart"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"vulnark/internal/model"
 	"vulnark/internal/repository"
@@ -23,40 +24,41 @@ type ReportService interface {
 	DeleteReport(id uint) error
 	GetReportList(req *model.ReportSearchRequest) (*model.PaginationResponse, error)
 	GetReportStats() (*model.ReportStats, error)
-	
+
 	// 报告状态管理
 	SubmitReport(id uint, userID uint) error
 	ReviewReport(id uint, req *model.ReportReviewRequest, reviewerID uint) error
 	ArchiveReport(id uint) error
-	
+
 	// 报告评论
 	AddComment(reportID uint, req *model.ReportCommentRequest, userID uint) (*model.ReportComment, error)
 	GetComments(reportID uint) ([]*model.ReportComment, error)
 	DeleteComment(id uint, userID uint) error
-	
+
 	// 文件下载
 	GetDownloadURL(id uint) (string, error)
+	OpenReportFile(id uint) (*model.Report, *os.File, error)
 }
 
 // reportService 报告服务实现
 type reportService struct {
-	reportRepo        repository.ReportRepository
-	commentRepo       repository.ReportCommentRepository
-	attachmentRepo    repository.FileAttachmentRepository
-	userRepo          repository.UserRepository
-	assetRepo         repository.AssetRepository
-	storageService    storage.StorageService
+	reportRepo     repository.ReportRepository
+	commentRepo    repository.ReportCommentRepository
+	attachmentRepo repository.FileAttachmentRepository
+	userRepo       repository.UserRepository
+	assetRepo      repository.AssetRepository
+	storageService storage.StorageService
 }
 
 // NewReportService 创建报告服务
-func NewReportService(reportRepo repository.ReportRepository, commentRepo repository.ReportCommentRepository, attachmentRepo repository.FileAttachmentRepository, userRepo repository.UserRepository, assetRepo repository.AssetRepository) ReportService {
+func NewReportService(reportRepo repository.ReportRepository, commentRepo repository.ReportCommentRepository, attachmentRepo repository.FileAttachmentRepository, userRepo repository.UserRepository, assetRepo repository.AssetRepository, storageService storage.StorageService) ReportService {
 	return &reportService{
 		reportRepo:     reportRepo,
 		commentRepo:    commentRepo,
 		attachmentRepo: attachmentRepo,
 		userRepo:       userRepo,
 		assetRepo:      assetRepo,
-		storageService: storage.NewStorageService(),
+		storageService: storageService,
 	}
 }
 
@@ -87,7 +89,15 @@ func (s *reportService) UploadReport(req *model.ReportUploadRequest, file *multi
 	// 上传文件
 	fileInfo, err := s.storageService.UploadFile(file, "reports")
 	if err != nil {
-		return nil, errors.New("文件上传失败: " + err.Error())
+		// A partial write may survive when the storage layer cannot remove it.
+		// Preserve that path durably even though no report metadata was created.
+		var cleanup *storage.CleanupError
+		if errors.As(err, &cleanup) {
+			if queueErr := s.reportRepo.QueueFileCleanup([]string{cleanup.FilePath}); queueErr != nil {
+				return nil, fmt.Errorf("文件上传失败，持久化文件补偿失败: %w", errors.Join(err, queueErr))
+			}
+		}
+		return nil, fmt.Errorf("文件上传失败: %w", err)
 	}
 
 	// 创建报告记录
@@ -109,8 +119,13 @@ func (s *reportService) UploadReport(req *model.ReportUploadRequest, file *multi
 	}
 
 	if err := s.reportRepo.Create(report); err != nil {
-		// 如果数据库操作失败，删除已上传的文件
-		s.storageService.DeleteFile(fileInfo.FilePath)
+		// This newly uploaded file has no committed business metadata. If an
+		// immediate compensation fails, persist a retry rather than losing it.
+		if cleanupErr := s.storageService.DeleteFile(fileInfo.FilePath); cleanupErr != nil && !errors.Is(cleanupErr, os.ErrNotExist) {
+			if queueErr := s.reportRepo.QueueFileCleanup([]string{fileInfo.FilePath}); queueErr != nil {
+				return nil, fmt.Errorf("创建报告记录失败，持久化文件补偿失败: %w", errors.Join(err, cleanupErr, queueErr))
+			}
+		}
 		return nil, errors.New("创建报告记录失败")
 	}
 
@@ -135,10 +150,15 @@ func (s *reportService) GetReportContent(id uint) (content string, contentType s
 		return "", "", errors.New("报告文件路径为空")
 	}
 
-	// 读取文件内容
-	fileContent, err := os.ReadFile(report.FilePath)
+	// All reads go through the injected storage path boundary.
+	file, err := s.storageService.OpenFile(report.FilePath)
 	if err != nil {
 		return "", "", errors.New("无法读取报告文件")
+	}
+	defer file.Close()
+	fileContent, err := io.ReadAll(io.LimitReader(file, storage.GetMaxReportSize()+1))
+	if err != nil || int64(len(fileContent)) > storage.GetMaxReportSize() {
+		return "", "", errors.New("无法读取报告文件或文件超过限制")
 	}
 
 	// 根据文件扩展名确定内容类型
@@ -196,17 +216,8 @@ func (s *reportService) UpdateReport(id uint, req *model.ReportUpdateRequest) er
 
 // DeleteReport 删除报告
 func (s *reportService) DeleteReport(id uint) error {
-	report, err := s.reportRepo.GetByID(id)
-	if err != nil {
-		return err
-	}
-
-	// 删除文件
-	if report.FilePath != "" {
-		s.storageService.DeleteFile(report.FilePath)
-	}
-
-	// 删除数据库记录
+	// Repository deletion and cleanup enqueue are one transaction. A failed
+	// transaction leaves both metadata and physical files available.
 	return s.reportRepo.Delete(id)
 }
 
@@ -323,9 +334,7 @@ func (s *reportService) GetComments(reportID uint) ([]*model.ReportComment, erro
 
 // DeleteComment 删除评论
 func (s *reportService) DeleteComment(id uint, userID uint) error {
-	// TODO: 实现获取评论详情的方法来验证权限
-	// 目前简化处理，直接删除
-	return s.commentRepo.Delete(id)
+	return s.commentRepo.DeleteOwned(id, userID)
 }
 
 // GetDownloadURL 获取下载URL
@@ -339,13 +348,26 @@ func (s *reportService) GetDownloadURL(id uint) (string, error) {
 		return "", errors.New("文件不存在")
 	}
 
-	// 生成预签名URL（有效期1小时）
-	return s.storageService.GeneratePresignedURL(report.FilePath, time.Hour)
+	// The URL remains authenticated and streams through the same storage boundary.
+	return fmt.Sprintf("/api/v1/reports/%d/download", id), nil
 }
 
 // getCommentByID 根据ID获取评论（内部方法）
 func (s *reportService) getCommentByID(id uint) (*model.ReportComment, error) {
-	// 这里需要实现一个根据ID获取评论的方法
-	// 为了简化，暂时返回nil
-	return nil, nil
+	return s.commentRepo.GetByID(id)
+}
+
+func (s *reportService) OpenReportFile(id uint) (*model.Report, *os.File, error) {
+	report, err := s.reportRepo.GetByID(id)
+	if err != nil {
+		return nil, nil, err
+	}
+	if report.FilePath == "" {
+		return nil, nil, errors.New("文件不存在")
+	}
+	file, err := s.storageService.OpenFile(report.FilePath)
+	if err != nil {
+		return nil, nil, err
+	}
+	return report, file, nil
 }

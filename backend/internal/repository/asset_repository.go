@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"vulnark/internal/model"
 )
 
@@ -53,12 +54,26 @@ func (r *assetRepository) GetByID(id uint) (*model.Asset, error) {
 
 // Update 更新资产
 func (r *assetRepository) Update(asset *model.Asset) error {
-	return r.db.Save(asset).Error
+	// 预加载的 Owner 可能仍指向旧负责人，只更新资产列，禁止关联写回。
+	return r.db.Model(asset).Select("*").Omit(clause.Associations, "id", "created_at").Updates(asset).Error
 }
 
 // Delete 删除资产
 func (r *assetRepository) Delete(id uint) error {
-	return r.db.Delete(&model.Asset{}, id).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var asset model.Asset
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&asset, id).Error; err != nil {
+			return err
+		}
+		var count int64
+		if err := tx.Model(&model.Vulnerability{}).Where("asset_id = ?", id).Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			return errors.New("资产存在关联漏洞，不能删除")
+		}
+		return tx.Delete(&model.Asset{}, id).Error
+	})
 }
 
 // List 获取资产列表

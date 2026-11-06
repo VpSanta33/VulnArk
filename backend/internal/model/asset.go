@@ -6,23 +6,23 @@ import (
 
 // Asset 资产模型
 type Asset struct {
-	ID               uint      `json:"id" gorm:"primarykey"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
-	Name             string    `json:"name" gorm:"size:100;not null" binding:"required"`
-	Type             string    `json:"type" gorm:"size:50;not null" binding:"required"`
-	Category         string    `json:"category" gorm:"size:50"`
-	IPAddress        string    `json:"ip_address" gorm:"size:45"`
-	Domain           string    `json:"domain" gorm:"size:255"`
-	Port             string    `json:"port" gorm:"size:20"`
-	OS               string    `json:"os" gorm:"size:100"`
-	Version          string    `json:"version" gorm:"size:50"`
-	Department       string    `json:"department" gorm:"size:100"`
-	OwnerID          *uint     `json:"owner_id"`
-	BusinessLine     string    `json:"business_line" gorm:"size:100"`
-	ImportanceLevel  int       `json:"importance_level" gorm:"default:3"` // 1-高，2-中，3-低
-	Description      string    `json:"description" gorm:"type:text"`
-	Status           int       `json:"status" gorm:"default:1"` // 1-正常，0-下线
+	ID              uint      `json:"id" gorm:"primarykey"`
+	CreatedAt       time.Time `json:"created_at" gorm:"index:idx_asset_created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+	Name            string    `json:"name" gorm:"size:100;not null" binding:"required"`
+	Type            string    `json:"type" gorm:"size:50;not null" binding:"required"`
+	Category        string    `json:"category" gorm:"size:50"`
+	IPAddress       string    `json:"ip_address" gorm:"size:45"`
+	Domain          string    `json:"domain" gorm:"size:255"`
+	Port            string    `json:"port" gorm:"size:20"`
+	OS              string    `json:"os" gorm:"size:100"`
+	Version         string    `json:"version" gorm:"size:50"`
+	Department      string    `json:"department" gorm:"size:100"`
+	OwnerID         *uint     `json:"owner_id"`
+	BusinessLine    string    `json:"business_line" gorm:"size:100"`
+	ImportanceLevel int       `json:"importance_level" gorm:"default:3"` // 1-高，2-中，3-低
+	Description     string    `json:"description" gorm:"type:text"`
+	Status          int       `json:"status" gorm:"default:1"` // 1-正常，0-下线
 
 	// 关联
 	Owner *User `json:"owner,omitempty" gorm:"foreignKey:OwnerID"`
@@ -87,33 +87,33 @@ type AssetImportRequest struct {
 
 // AssetStats 资产统计
 type AssetStats struct {
-	Total           int64                    `json:"total"`
-	ByType          map[string]int64         `json:"by_type"`
-	ByDepartment    map[string]int64         `json:"by_department"`
-	ByImportance    map[string]int64         `json:"by_importance"`
-	ByStatus        map[string]int64         `json:"by_status"`
+	Total        int64            `json:"total"`
+	ByType       map[string]int64 `json:"by_type"`
+	ByDepartment map[string]int64 `json:"by_department"`
+	ByImportance map[string]int64 `json:"by_importance"`
+	ByStatus     map[string]int64 `json:"by_status"`
 }
 
 // AssetInfo 资产信息（用于响应）
 type AssetInfo struct {
-	ID               uint      `json:"id"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
-	Name             string    `json:"name"`
-	Type             string    `json:"type"`
-	Category         string    `json:"category"`
-	IPAddress        string    `json:"ip_address"`
-	Domain           string    `json:"domain"`
-	Port             string    `json:"port"`
-	OS               string    `json:"os"`
-	Version          string    `json:"version"`
-	Department       string    `json:"department"`
-	OwnerID          *uint     `json:"owner_id"`
-	BusinessLine     string    `json:"business_line"`
-	ImportanceLevel  int       `json:"importance_level"`
-	Description      string    `json:"description"`
-	Status           int       `json:"status"`
-	Owner            *UserInfo `json:"owner,omitempty"`
+	ID              uint      `json:"id"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+	Name            string    `json:"name"`
+	Type            string    `json:"type"`
+	Category        string    `json:"category"`
+	IPAddress       string    `json:"ip_address"`
+	Domain          string    `json:"domain"`
+	Port            string    `json:"port"`
+	OS              string    `json:"os"`
+	Version         string    `json:"version"`
+	Department      string    `json:"department"`
+	OwnerID         *uint     `json:"owner_id"`
+	BusinessLine    string    `json:"business_line"`
+	ImportanceLevel int       `json:"importance_level"`
+	Description     string    `json:"description"`
+	Status          int       `json:"status"`
+	Owner           *UserInfo `json:"owner,omitempty"`
 }
 
 // ToAssetInfo 转换为资产信息

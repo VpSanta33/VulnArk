@@ -13,8 +13,9 @@ import (
 type UserService interface {
 	Login(req *model.UserLoginRequest) (*model.UserLoginResponse, error)
 	Register(req *model.UserCreateRequest) (*model.User, error)
+	RevokeAllSessions(userID uint) error
 	GetProfile(userID uint) (*model.UserInfo, error)
-	UpdateProfile(userID uint, req *model.UserUpdateRequest) error
+	UpdateProfile(userID uint, req *model.UserProfileUpdateRequest) error
 	ChangePassword(userID uint, req *model.ChangePasswordRequest) error
 	CreateUser(req *model.UserCreateRequest) (*model.User, error)
 	UpdateUser(userID uint, req *model.UserUpdateRequest) error
@@ -25,54 +26,59 @@ type UserService interface {
 
 // userService 用户服务实现
 type userService struct {
-	userRepo repository.UserRepository
-	roleRepo repository.RoleRepository
+	userRepo   repository.UserRepository
+	roleRepo   repository.RoleRepository
 	jwtManager *auth.JWTManager
+	mfa        *MFAService
 }
 
 // NewUserService 创建用户服务
 func NewUserService(userRepo repository.UserRepository, roleRepo repository.RoleRepository) UserService {
-	return &userService{
-		userRepo:   userRepo,
-		roleRepo:   roleRepo,
-		jwtManager: auth.NewJWTManager(),
-	}
+	return NewUserServiceWithAuth(userRepo, roleRepo, auth.NewJWTManager(), configuredMFAService(userRepo))
 }
 
-// Login 用户登录
+func NewUserServiceWithAuth(userRepo repository.UserRepository, roleRepo repository.RoleRepository, manager *auth.JWTManager, mfa *MFAService) UserService {
+	return &userService{userRepo: userRepo, roleRepo: roleRepo, jwtManager: manager, mfa: mfa}
+}
+
 func (s *userService) Login(req *model.UserLoginRequest) (*model.UserLoginResponse, error) {
-	// 获取用户
 	user, err := s.userRepo.GetByUsername(req.Username)
-	if err != nil {
+	if err != nil || !utils.CheckPassword(req.Password, user.PasswordHash) {
 		return nil, errors.New("用户名或密码错误")
 	}
-
-	// 检查用户状态
 	if !user.IsActive() {
 		return nil, errors.New("用户已被禁用")
 	}
-
-	// 验证密码
-	if !utils.CheckPassword(req.Password, user.PasswordHash) {
-		return nil, errors.New("用户名或密码错误")
+	if s.jwtManager == nil {
+		return nil, errors.New("认证尚未配置")
 	}
-
-	// 生成JWT令牌
-	token, expiresAt, err := s.jwtManager.GenerateToken(user.ID, user.Username, user.RoleID)
+	if needsRebind(user) {
+		token, expires, err := s.jwtManager.GenerateRebindToken(user.ID, user.Username, user.RoleID, user.TokenVersion)
+		if err != nil {
+			return nil, err
+		}
+		return &model.UserLoginResponse{MFARebindRequired: true, RebindToken: token, ExpiresAt: expires}, nil
+	}
+	if user.TwoFactorEnabled {
+		if req.ChallengeToken == "" {
+			return s.mfa.IssueChallenge(user)
+		}
+		if err = s.mfa.VerifyLogin(user, req.ChallengeToken, req.TOTPCode, req.RecoveryCode); err != nil {
+			return nil, err
+		}
+	} else if req.ChallengeToken != "" || req.TOTPCode != "" || req.RecoveryCode != "" {
+		return nil, errors.New("认证状态已变化，请重新登录")
+	}
+	token, expires, err := s.jwtManager.GenerateAccessToken(user.ID, user.Username, user.RoleID, user.TokenVersion)
 	if err != nil {
 		return nil, errors.New("生成令牌失败")
 	}
+	_ = s.userRepo.UpdateLastLogin(user.ID)
+	return &model.UserLoginResponse{Token: token, ExpiresAt: expires, User: user.ToUserInfo()}, nil
+}
 
-	// 更新最后登录时间
-	if err := s.userRepo.UpdateLastLogin(user.ID); err != nil {
-		// 记录日志但不影响登录
-	}
-
-	return &model.UserLoginResponse{
-		Token:     token,
-		ExpiresAt: expiresAt,
-		User:      user.ToUserInfo(),
-	}, nil
+func (s *userService) RevokeAllSessions(userID uint) error {
+	return s.userRepo.IncrementTokenVersion(userID)
 }
 
 // Register 用户注册（管理员创建用户）
@@ -92,55 +98,50 @@ func (s *userService) GetProfile(userID uint) (*model.UserInfo, error) {
 }
 
 // UpdateProfile 更新用户资料
-func (s *userService) UpdateProfile(userID uint, req *model.UserUpdateRequest) error {
-	user, err := s.userRepo.GetByID(userID)
-	if err != nil {
-		return err
-	}
-
-	// 更新字段
-	if req.Email != "" {
-		// 检查邮箱是否已存在
-		if existUser, _ := s.userRepo.GetByEmail(req.Email); existUser != nil && existUser.ID != userID {
-			return errors.New("邮箱已被使用")
-		}
-		user.Email = req.Email
-	}
-
-	if req.RealName != "" {
-		user.RealName = req.RealName
-	}
-
-	if req.Phone != "" {
-		user.Phone = req.Phone
-	}
-
-	if req.Department != "" {
-		user.Department = req.Department
-	}
-
-	return s.userRepo.Update(userID, req)
+func (s *userService) UpdateProfile(userID uint, req *model.UserProfileUpdateRequest) error {
+	return updateUserProfile(s.userRepo, userID, req)
 }
 
-// ChangePassword 修改密码
+func updateUserProfile(repo repository.UserRepository, userID uint, req *model.UserProfileUpdateRequest) error {
+	if _, err := repo.GetByID(userID); err != nil {
+		return err
+	}
+	if req.Username != "" {
+		if existing, _ := repo.GetByUsername(req.Username); existing != nil && existing.ID != userID {
+			return errors.New("用户名已存在")
+		}
+	}
+	if req.Email != "" {
+		if existing, _ := repo.GetByEmail(req.Email); existing != nil && existing.ID != userID {
+			return errors.New("邮箱已被使用")
+		}
+	}
+	return repo.UpdateProfile(userID, req)
+}
+
 func (s *userService) ChangePassword(userID uint, req *model.ChangePasswordRequest) error {
-	user, err := s.userRepo.GetByID(userID)
+	return changeUserPassword(s.userRepo, userID, req)
+}
+
+func changeUserPassword(repo repository.UserRepository, userID uint, req *model.ChangePasswordRequest) error {
+	if req.NewPassword != req.ConfirmPassword {
+		return errors.New("确认密码不匹配")
+	}
+	if len(req.NewPassword) < 6 {
+		return errors.New("新密码至少六位")
+	}
+	user, err := repo.GetByID(userID)
 	if err != nil {
 		return err
 	}
-
-	// 验证旧密码
-	if !utils.CheckPassword(req.CurrentPassword, user.PasswordHash) {
-		return errors.New("原密码错误")
+	if !user.IsActive() || !utils.CheckPassword(req.CurrentPassword, user.PasswordHash) {
+		return errors.New("当前密码错误")
 	}
-
-	// 加密新密码
-	hashedPassword, err := utils.HashPassword(req.NewPassword)
+	hash, err := utils.HashPassword(req.NewPassword)
 	if err != nil {
-		return errors.New("密码加密失败")
+		return err
 	}
-
-	return s.userRepo.UpdatePassword(userID, hashedPassword)
+	return repo.UpdatePassword(userID, hash)
 }
 
 // CreateUser 创建用户
@@ -175,6 +176,7 @@ func (s *userService) CreateUser(req *model.UserCreateRequest) (*model.User, err
 		RoleID:       req.RoleID,
 		Department:   req.Department,
 		Status:       1, // 默认启用
+		TokenVersion: 1,
 	}
 
 	if err := s.userRepo.Create(user); err != nil {
@@ -329,7 +331,11 @@ func (s *roleService) UpdateRole(roleID uint, req *model.RoleUpdateRequest) erro
 		role.Permissions = req.Permissions
 	}
 
-	return s.roleRepo.Update(role)
+	// Only requested fields may be written; a metadata edit must not restore
+	// permissions revoked after the role was read.
+	return s.roleRepo.Update(&model.Role{
+		ID: roleID, Name: req.Name, Description: req.Description, Permissions: req.Permissions,
+	})
 }
 
 // DeleteRole 删除角色
@@ -384,7 +390,7 @@ func (s *roleService) createDefaultRoles() error {
 		{
 			Name:        "开发工程师",
 			Description: "开发工程师，可以管理漏洞和资产",
-			Permissions: []string{"vulnerability:*", "asset:*", "report:read", "knowledge:*"},
+			Permissions: []string{"vuln:*", "asset:*", "report:read", "knowledge:*"},
 		},
 		{
 			Name:        "普通用户",

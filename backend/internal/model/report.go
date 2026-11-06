@@ -9,27 +9,27 @@ import (
 
 // Report 渗透测试报告模型
 type Report struct {
-	ID           uint       `json:"id" gorm:"primarykey"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
-	Title        string     `json:"title" gorm:"size:255;not null" binding:"required"`
-	Description  string     `json:"description" gorm:"type:text"`
-	Type         string     `json:"type" gorm:"size:50;not null" binding:"required"`
-	Severity     string     `json:"severity" gorm:"size:20;default:medium"`
-	Status       string     `json:"status" gorm:"size:20;default:draft"`
-	AssetIDs     AssetIDList `json:"asset_ids" gorm:"type:json"` // 关联的资产ID列表
-	Tags         TagList    `json:"tags" gorm:"type:json"`       // 标签
-	FilePath     string     `json:"file_path" gorm:"size:500;not null"`
-	FileName     string     `json:"file_name" gorm:"size:255;not null"`
-	FileSize     int64      `json:"file_size" gorm:"not null"`
-	FileType     string     `json:"file_type" gorm:"size:100"`
-	DownloadURL  string     `json:"download_url" gorm:"size:500"`
-	UploaderID   uint       `json:"uploader_id" gorm:"not null"`
-	TestDate     *time.Time `json:"test_date"`     // 测试日期
-	SubmittedAt  *time.Time `json:"submitted_at"`  // 提交日期
-	ReviewedAt   *time.Time `json:"reviewed_at"`   // 审核日期
-	ReviewerID   *uint      `json:"reviewer_id"`   // 审核人ID
-	ReviewNotes  string     `json:"review_notes" gorm:"type:text"` // 审核备注
+	ID          uint        `json:"id" gorm:"primarykey"`
+	CreatedAt   time.Time   `json:"created_at" gorm:"index:idx_report_created_at"`
+	UpdatedAt   time.Time   `json:"updated_at"`
+	Title       string      `json:"title" gorm:"size:255;not null" binding:"required"`
+	Description string      `json:"description" gorm:"type:text"`
+	Type        string      `json:"type" gorm:"size:50;not null" binding:"required"`
+	Severity    string      `json:"severity" gorm:"size:20;default:medium"`
+	Status      string      `json:"status" gorm:"size:20;default:draft"`
+	AssetIDs    AssetIDList `json:"asset_ids" gorm:"type:json"` // 关联的资产ID列表
+	Tags        TagList     `json:"tags" gorm:"type:json"`      // 标签
+	FilePath    string      `json:"-" gorm:"size:500;not null"`
+	FileName    string      `json:"file_name" gorm:"size:255;not null"`
+	FileSize    int64       `json:"file_size" gorm:"not null"`
+	FileType    string      `json:"file_type" gorm:"size:100"`
+	DownloadURL string      `json:"download_url" gorm:"size:500"`
+	UploaderID  uint        `json:"uploader_id" gorm:"not null"`
+	TestDate    *time.Time  `json:"test_date"`                     // 测试日期
+	SubmittedAt *time.Time  `json:"submitted_at"`                  // 提交日期
+	ReviewedAt  *time.Time  `json:"reviewed_at"`                   // 审核日期
+	ReviewerID  *uint       `json:"reviewer_id"`                   // 审核人ID
+	ReviewNotes string      `json:"review_notes" gorm:"type:text"` // 审核备注
 
 	// 关联
 	Uploader User  `json:"uploader" gorm:"foreignKey:UploaderID"`
@@ -113,18 +113,18 @@ func (ReportComment) TableName() string {
 
 // FileAttachment 文件附件模型
 type FileAttachment struct {
-	ID           uint      `json:"id" gorm:"primarykey"`
-	CreatedAt    time.Time `json:"created_at"`
-	Filename     string    `json:"filename" gorm:"size:255;not null"`
-	OriginalName string    `json:"original_name" gorm:"size:255;not null"`
-	FilePath     string    `json:"file_path" gorm:"size:500;not null"`
-	FileSize     int64     `json:"file_size" gorm:"not null"`
-	FileType     string    `json:"file_type" gorm:"size:100"`
-	MimeType     string    `json:"mime_type" gorm:"size:100"`
-	DownloadURL  string    `json:"download_url" gorm:"size:500"`
-	UploaderID   uint      `json:"uploader_id" gorm:"not null"`
-	EntityType   string    `json:"entity_type" gorm:"size:50"` // vulnerability, report, etc.
-	EntityID     uint      `json:"entity_id"`
+	ID           uint       `json:"id" gorm:"primarykey"`
+	CreatedAt    time.Time  `json:"created_at"`
+	Filename     string     `json:"filename" gorm:"size:255;not null"`
+	OriginalName string     `json:"original_name" gorm:"size:255;not null"`
+	FilePath     string     `json:"-" gorm:"size:500;not null"`
+	FileSize     int64      `json:"file_size" gorm:"not null"`
+	FileType     string     `json:"file_type" gorm:"size:100"`
+	MimeType     string     `json:"mime_type" gorm:"size:100"`
+	DownloadURL  string     `json:"download_url" gorm:"size:500"`
+	UploaderID   uint       `json:"uploader_id" gorm:"not null"`
+	EntityType   string     `json:"entity_type" gorm:"size:50"` // vulnerability, report, etc.
+	EntityID     uint       `json:"entity_id"`
 	ExpiresAt    *time.Time `json:"expires_at"`
 
 	// 关联
@@ -185,12 +185,12 @@ type ReportCommentRequest struct {
 
 // ReportStats 报告统计
 type ReportStats struct {
-	Total         int64                `json:"total"`
-	ByType        map[string]int64     `json:"by_type"`
-	BySeverity    map[string]int64     `json:"by_severity"`
-	ByStatus      map[string]int64     `json:"by_status"`
-	RecentReports []ReportSummary      `json:"recent_reports"`
-	TotalSize     int64                `json:"total_size"`
+	Total         int64            `json:"total"`
+	ByType        map[string]int64 `json:"by_type"`
+	BySeverity    map[string]int64 `json:"by_severity"`
+	ByStatus      map[string]int64 `json:"by_status"`
+	RecentReports []ReportSummary  `json:"recent_reports"`
+	TotalSize     int64            `json:"total_size"`
 }
 
 // ReportSummary 报告摘要
@@ -220,7 +220,7 @@ type ReportInfo struct {
 	StatusText   string      `json:"status_text"`
 	AssetIDs     AssetIDList `json:"asset_ids"`
 	Tags         TagList     `json:"tags"`
-	FilePath     string      `json:"file_path"`
+	FilePath     string      `json:"-"`
 	FileName     string      `json:"file_name"`
 	FileSize     int64       `json:"file_size"`
 	FileType     string      `json:"file_type"`
@@ -331,11 +331,11 @@ func (r *Report) GetStatusText() string {
 
 // 报告类型常量
 const (
-	ReportTypePenetrationTest       = "penetration_test"
+	ReportTypePenetrationTest         = "penetration_test"
 	ReportTypeVulnerabilityAssessment = "vulnerability_assessment"
-	ReportTypeSecurityAudit         = "security_audit"
-	ReportTypeComplianceCheck       = "compliance_check"
-	ReportTypeOther                 = "other"
+	ReportTypeSecurityAudit           = "security_audit"
+	ReportTypeComplianceCheck         = "compliance_check"
+	ReportTypeOther                   = "other"
 )
 
 // 报告严重程度常量

@@ -42,13 +42,17 @@ func (s *assetService) CreateAsset(req *model.AssetCreateRequest) (*model.Asset,
 	}
 
 	// 检查资产名称是否已存在
-	if existAsset, _ := s.assetRepo.GetByName(req.Name); existAsset != nil {
+	if existAsset, err := s.assetRepo.GetByName(req.Name); err != nil {
+		return nil, err
+	} else if existAsset != nil {
 		return nil, errors.New("资产名称已存在")
 	}
 
 	// 检查IP地址是否已存在（如果提供了IP地址）
 	if req.IPAddress != "" {
-		if existAsset, _ := s.assetRepo.GetByIPAddress(req.IPAddress); existAsset != nil {
+		if existAsset, err := s.assetRepo.GetByIPAddress(req.IPAddress); err != nil {
+			return nil, err
+		} else if existAsset != nil {
 			return nil, errors.New("IP地址已被使用")
 		}
 	}
@@ -110,7 +114,9 @@ func (s *assetService) UpdateAsset(id uint, req *model.AssetUpdateRequest) error
 	// 更新字段
 	if req.Name != "" {
 		// 检查名称是否已存在（排除当前资产）
-		if existAsset, _ := s.assetRepo.GetByName(req.Name); existAsset != nil && existAsset.ID != id {
+		if existAsset, err := s.assetRepo.GetByName(req.Name); err != nil {
+			return err
+		} else if existAsset != nil && existAsset.ID != id {
 			return errors.New("资产名称已存在")
 		}
 		asset.Name = req.Name
@@ -126,7 +132,9 @@ func (s *assetService) UpdateAsset(id uint, req *model.AssetUpdateRequest) error
 
 	if req.IPAddress != "" {
 		// 检查IP地址是否已存在（排除当前资产）
-		if existAsset, _ := s.assetRepo.GetByIPAddress(req.IPAddress); existAsset != nil && existAsset.ID != id {
+		if existAsset, err := s.assetRepo.GetByIPAddress(req.IPAddress); err != nil {
+			return err
+		} else if existAsset != nil && existAsset.ID != id {
 			return errors.New("IP地址已被使用")
 		}
 		asset.IPAddress = req.IPAddress
@@ -186,9 +194,7 @@ func (s *assetService) DeleteAsset(id uint) error {
 		return err
 	}
 
-	// TODO: 检查是否有关联的漏洞，如果有则不允许删除
-	// 这里暂时允许删除，后续实现漏洞模块时再添加检查
-
+	// 仓储在锁定资产的事务中检查关联漏洞并拒绝删除。
 	return s.assetRepo.Delete(id)
 }
 

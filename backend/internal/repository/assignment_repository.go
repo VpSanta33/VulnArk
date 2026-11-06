@@ -5,11 +5,13 @@ import (
 	"strconv"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"vulnark/internal/model"
 )
 
 // AssignmentRepository 分配仓储接口
 type AssignmentRepository interface {
+	GetVulnerabilityForUpdate(vulnID uint) (*model.Vulnerability, error)
 	CreateAssignment(assignment *model.VulnerabilityAssignment) error
 	GetAssignmentsByVulnerabilityID(vulnID uint) ([]*model.VulnerabilityAssignment, error)
 	GetAssignmentsByAssigneeID(assigneeID uint) ([]*model.VulnerabilityAssignment, error)
@@ -26,6 +28,18 @@ func NewAssignmentRepository(db *gorm.DB) AssignmentRepository {
 	return &assignmentRepository{
 		db: db,
 	}
+}
+
+// GetVulnerabilityForUpdate 在当前事务中锁定漏洞，串行化同一漏洞的分配。
+func (r *assignmentRepository) GetVulnerabilityForUpdate(vulnID uint) (*model.Vulnerability, error) {
+	var vulnerability model.Vulnerability
+	if err := r.db.Clauses(clause.Locking{Strength: "UPDATE"}).First(&vulnerability, vulnID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("漏洞不存在")
+		}
+		return nil, err
+	}
+	return &vulnerability, nil
 }
 
 // CreateAssignment 创建分配记录

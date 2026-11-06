@@ -11,19 +11,22 @@ import (
 
 // RoleController 角色控制器
 type RoleController struct {
-	roleService service.RoleService
+	roleService       service.RoleService
+	permissionService service.PermissionService
 }
 
 // NewRoleController 创建角色控制器
-func NewRoleController(roleService service.RoleService) *RoleController {
-	return &RoleController{
-		roleService: roleService,
+func NewRoleController(roleService service.RoleService, permissions ...service.PermissionService) *RoleController {
+	c := &RoleController{roleService: roleService}
+	if len(permissions) > 0 {
+		c.permissionService = permissions[0]
 	}
+	return c
 }
 
 // CreateRole 创建角色
 // @Summary 创建角色
-// @Description 管理员创建新角色
+// @Description 创建角色需要 role:manage 权限；请求包含 permissions 权限配置时额外需要 system:permission 权限。
 // @Tags 角色管理
 // @Accept json
 // @Produce json
@@ -38,6 +41,9 @@ func (c *RoleController) CreateRole(ctx *gin.Context) {
 		return
 	}
 
+	if len(req.Permissions) > 0 && !allowPermissionChanges(ctx, c.permissionService) {
+		return
+	}
 	role, err := c.roleService.CreateRole(&req)
 	if err != nil {
 		utils.BadRequestResponse(ctx, err.Error())
@@ -95,7 +101,7 @@ func (c *RoleController) GetRole(ctx *gin.Context) {
 
 // UpdateRole 更新角色
 // @Summary 更新角色
-// @Description 管理员更新角色信息
+// @Description 更新角色需要 role:manage 权限；请求包含 permissions 权限配置时额外需要 system:permission 权限。
 // @Tags 角色管理
 // @Accept json
 // @Produce json
@@ -118,6 +124,9 @@ func (c *RoleController) UpdateRole(ctx *gin.Context) {
 		return
 	}
 
+	if req.Permissions != nil && !allowPermissionChanges(ctx, c.permissionService) {
+		return
+	}
 	if err := c.roleService.UpdateRole(uint(id), &req); err != nil {
 		utils.BadRequestResponse(ctx, err.Error())
 		return
@@ -158,7 +167,7 @@ func (c *RoleController) DeleteRole(ctx *gin.Context) {
 // @Tags 角色管理
 // @Produce json
 // @Security ApiKeyAuth
-// @Success 200 {object} model.Response{data=[]model.RoleOption}
+// @Success 200 {object} model.Response{data=[]object{value=int,label=string,description=string}}
 // @Failure 500 {object} model.Response
 // @Router /api/v1/roles/options [get]
 func (c *RoleController) GetRoleOptions(ctx *gin.Context) {
@@ -172,8 +181,8 @@ func (c *RoleController) GetRoleOptions(ctx *gin.Context) {
 	options := make([]map[string]interface{}, 0, len(roles))
 	for _, role := range roles {
 		options = append(options, map[string]interface{}{
-			"value": role.ID,
-			"label": role.Name,
+			"value":       role.ID,
+			"label":       role.Name,
 			"description": role.Description,
 		})
 	}

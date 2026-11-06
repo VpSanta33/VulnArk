@@ -2,105 +2,43 @@ package controller
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"vulnark/internal/config"
 	"vulnark/internal/middleware"
+	"vulnark/pkg/outbound"
 	"vulnark/pkg/utils"
 )
 
 // APITestController API测试控制器
-type APITestController struct{}
+type APITestController struct {
+	client *http.Client
+	policy outbound.Policy
+}
 
-// NewAPITestController 创建API测试控制器
+func apiTestPolicy() outbound.Policy {
+	policy := outbound.Policy{AllowedHosts: []string{"api.vulnark.com", "test.vulnark.com", "httpbin.org", "jsonplaceholder.typicode.com"}}
+	if config.AppConfig != nil {
+		policy.PrivateOrigins = config.AppConfig.Security.OutboundPrivateOrigins
+	}
+	return policy
+}
+
 func NewAPITestController() *APITestController {
-	return &APITestController{}
+	policy := apiTestPolicy()
+	return &APITestController{client: outbound.NewClient(0, policy), policy: policy}
 }
 
-// validateURL 验证URL是否安全，防止SSRF攻击
-func validateURL(rawURL string) error {
-	parsedURL, err := url.Parse(rawURL)
-	if err != nil {
-		return fmt.Errorf("无效的URL格式")
-	}
-
-	// 只允许HTTP和HTTPS协议
-	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return fmt.Errorf("不支持的协议，只允许HTTP和HTTPS")
-	}
-
-	// 获取主机名
-	hostname := parsedURL.Hostname()
-	if hostname == "" {
-		return fmt.Errorf("无效的主机名")
-	}
-
-	// 白名单域名（可配置）
-	allowedDomains := []string{
-		"api.vulnark.com",
-		"test.vulnark.com",
-		"localhost",
-		"127.0.0.1",
-		"httpbin.org", // 用于测试的公共API
-		"jsonplaceholder.typicode.com", // 用于测试的公共API
-	}
-
-	// 检查域名白名单
-	domainAllowed := false
-	for _, domain := range allowedDomains {
-		if hostname == domain {
-			domainAllowed = true
-			break
-		}
-	}
-
-	if !domainAllowed {
-		return fmt.Errorf("不允许访问的域名: %s", hostname)
-	}
-
-	// 检查是否为IP地址
-	if ip := net.ParseIP(hostname); ip != nil {
-		// 禁止访问内网地址
-		if ip.IsLoopback() && hostname != "127.0.0.1" && hostname != "localhost" {
-			return fmt.Errorf("不允许访问回环地址")
-		}
-
-		if ip.IsPrivate() && hostname != "127.0.0.1" {
-			return fmt.Errorf("不允许访问私有网络地址")
-		}
-
-		// 禁止访问特殊地址
-		if ip.IsMulticast() || ip.IsUnspecified() {
-			return fmt.Errorf("不允许访问特殊网络地址")
-		}
-	}
-
-	// 检查端口范围
-	port := parsedURL.Port()
-	if port != "" {
-		// 只允许常见的HTTP端口
-		allowedPorts := []string{"80", "443", "8080", "8443", "3000", "8000"}
-		portAllowed := false
-		for _, allowedPort := range allowedPorts {
-			if port == allowedPort {
-				portAllowed = true
-				break
-			}
-		}
-		if !portAllowed {
-			return fmt.Errorf("不允许的端口: %s", port)
-		}
-	}
-
-	return nil
-}
+// validateURL is also used by tests and legacy callers; the transport rechecks
+// redirects and pins DNS results to the actual address being dialed.
+func validateURL(rawURL string) error { return apiTestPolicy().ValidateURL(rawURL) }
 
 // APITestRequest API测试请求
 type APITestRequest struct {
@@ -113,11 +51,11 @@ type APITestRequest struct {
 
 // APITestResponse API测试响应
 type APITestResponse struct {
-	StatusCode   int                    `json:"status_code"`
-	Headers      map[string][]string    `json:"headers"`
-	Body         interface{}            `json:"body"`
-	ResponseTime int64                  `json:"response_time"` // 响应时间（毫秒）
-	Error        string                 `json:"error,omitempty"`
+	StatusCode   int                 `json:"status_code"`
+	Headers      map[string][]string `json:"headers"`
+	Body         interface{}         `json:"body"`
+	ResponseTime int64               `json:"response_time"` // 响应时间（毫秒）
+	Error        string              `json:"error,omitempty"`
 }
 
 // APIEndpoint API端点信息
@@ -152,13 +90,14 @@ type APIParameter struct {
 // @Failure 400 {object} model.Response
 // @Router /api/v1/api-test/test [post]
 func (c *APITestController) TestAPI(ctx *gin.Context) {
+	ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, 1<<20)
 	var req APITestRequest
 	if err := utils.BindAndValidate(ctx, &req); err != nil {
 		return
 	}
 
 	// 验证URL安全性，防止SSRF攻击
-	if err := validateURL(req.URL); err != nil {
+	if err := c.policy.ValidateURL(req.URL); err != nil {
 		utils.BadRequestResponse(ctx, "URL验证失败: "+err.Error())
 		return
 	}
@@ -166,6 +105,9 @@ func (c *APITestController) TestAPI(ctx *gin.Context) {
 	// 设置默认超时时间
 	if req.Timeout <= 0 {
 		req.Timeout = 30
+	}
+	if req.Timeout > 60 {
+		req.Timeout = 60
 	}
 
 	startTime := time.Now()
@@ -182,7 +124,9 @@ func (c *APITestController) TestAPI(ctx *gin.Context) {
 	}
 
 	// 创建HTTP请求
-	httpReq, err := http.NewRequest(req.Method, req.URL, bodyReader)
+	requestContext, cancel := context.WithTimeout(ctx.Request.Context(), time.Duration(req.Timeout)*time.Second)
+	defer cancel()
+	httpReq, err := http.NewRequestWithContext(requestContext, req.Method, req.URL, bodyReader)
 	if err != nil {
 		utils.BadRequestResponse(ctx, "创建HTTP请求失败: "+err.Error())
 		return
@@ -200,13 +144,8 @@ func (c *APITestController) TestAPI(ctx *gin.Context) {
 		httpReq.Header.Set("Content-Type", "application/json")
 	}
 
-	// 创建HTTP客户端
-	client := &http.Client{
-		Timeout: time.Duration(req.Timeout) * time.Second,
-	}
-
-	// 发送请求
-	resp, err := client.Do(httpReq)
+	// 发送请求；共享连接池，重定向沿用同一目标校验策略。
+	resp, err := c.client.Do(httpReq)
 	if err != nil {
 		responseTime := time.Since(startTime).Milliseconds()
 		response := APITestResponse{
@@ -222,7 +161,7 @@ func (c *APITestController) TestAPI(ctx *gin.Context) {
 	responseTime := time.Since(startTime).Milliseconds()
 
 	// 读取响应体
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := outbound.ReadBody(resp.Body, 4<<20)
 	if err != nil {
 		response := APITestResponse{
 			StatusCode:   resp.StatusCode,
@@ -427,9 +366,12 @@ func (c *APITestController) GenerateAPIToken(ctx *gin.Context) {
 
 // GetAPIDocumentation 获取API文档信息
 // @Summary 获取API文档信息
-// @Description 获取系统API文档的基本信息和访问地址
+// @Description 获取系统API文档的基本信息和访问地址；需要 api:test 权限。
 // @Tags API测试
 // @Produce json
+// @Security ApiKeyAuth
+// @Failure 401 {object} model.Response
+// @Failure 403 {object} model.Response
 // @Success 200 {object} model.Response{data=map[string]interface{}}
 // @Router /api/v1/api-test/docs [get]
 func (c *APITestController) GetAPIDocumentation(ctx *gin.Context) {

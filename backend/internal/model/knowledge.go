@@ -9,23 +9,23 @@ import (
 
 // KnowledgeBase 知识库模型
 type KnowledgeBase struct {
-	ID          uint      `json:"id" gorm:"primarykey"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	Title       string    `json:"title" gorm:"size:255;not null"`
-	Content     string    `json:"content" gorm:"type:longtext;not null"`
-	Summary     string    `json:"summary" gorm:"type:text"`
-	Category    string    `json:"category" gorm:"size:50;not null"`
-	Type        string    `json:"type" gorm:"size:50;not null"`
-	Severity    string    `json:"severity" gorm:"size:20"`
-	Status      string    `json:"status" gorm:"size:20;default:published"`
-	ViewCount   int       `json:"view_count" gorm:"default:0"`
-	LikeCount   int       `json:"like_count" gorm:"default:0"`
-	AuthorID    uint      `json:"author_id" gorm:"not null"`
-	ReviewerID  *uint     `json:"reviewer_id"`
+	ID          uint       `json:"id" gorm:"primarykey"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	Title       string     `json:"title" gorm:"size:255;not null"`
+	Content     string     `json:"content" gorm:"type:longtext;not null"`
+	Summary     string     `json:"summary" gorm:"type:text"`
+	Category    string     `json:"category" gorm:"size:50;not null"`
+	Type        string     `json:"type" gorm:"size:50;not null"`
+	Severity    string     `json:"severity" gorm:"size:20"`
+	Status      string     `json:"status" gorm:"size:20;default:published"`
+	ViewCount   int        `json:"view_count" gorm:"default:0"`
+	LikeCount   int        `json:"like_count" gorm:"default:0"`
+	AuthorID    uint       `json:"author_id" gorm:"not null"`
+	ReviewerID  *uint      `json:"reviewer_id"`
 	ReviewedAt  *time.Time `json:"reviewed_at"`
 	PublishedAt *time.Time `json:"published_at"`
-	Tags        string    `json:"tags" gorm:"type:text"`
+	Tags        string     `json:"tags" gorm:"type:text"`
 	Metadata    KBMetadata `json:"metadata" gorm:"type:json"`
 
 	// 关联
@@ -51,17 +51,19 @@ func (m KBMetadata) Value() (driver.Value, error) {
 
 // Scan 实现 sql.Scanner 接口
 func (m *KBMetadata) Scan(value interface{}) error {
-	if value == nil {
+	var data []byte
+	switch value := value.(type) {
+	case nil:
 		*m = KBMetadata{}
 		return nil
+	case []byte:
+		data = value
+	case string:
+		data = []byte(value)
+	default:
+		return errors.New("知识库元数据必须为string或[]byte")
 	}
-	
-	bytes, ok := value.([]byte)
-	if !ok {
-		return errors.New("无法将值转换为[]byte")
-	}
-	
-	return json.Unmarshal(bytes, m)
+	return json.Unmarshal(data, m)
 }
 
 // Tag 标签模型
@@ -88,9 +90,9 @@ func (Tag) TableName() string {
 
 // KnowledgeTag 知识库标签关联模型
 type KnowledgeTag struct {
-	ID            uint `json:"id" gorm:"primarykey"`
-	KnowledgeID   uint `json:"knowledge_id" gorm:"not null"`
-	TagID         uint `json:"tag_id" gorm:"not null"`
+	ID          uint `json:"id" gorm:"primarykey"`
+	KnowledgeID uint `json:"knowledge_id" gorm:"not null;uniqueIndex:idx_knowledge_tag"`
+	TagID       uint `json:"tag_id" gorm:"not null;uniqueIndex:idx_knowledge_tag"`
 
 	// 关联
 	Knowledge KnowledgeBase `json:"knowledge" gorm:"foreignKey:KnowledgeID"`
@@ -205,30 +207,30 @@ type TemplateUpdateRequest struct {
 
 // KnowledgeInfo 知识库信息（用于响应）
 type KnowledgeInfo struct {
-	ID          uint       `json:"id"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	Title       string     `json:"title"`
-	Content     string     `json:"content"`
-	Summary     string     `json:"summary"`
-	Category    string     `json:"category"`
-	CategoryText string    `json:"category_text"`
-	Type        string     `json:"type"`
-	TypeText    string     `json:"type_text"`
-	Severity    string     `json:"severity"`
-	SeverityText string    `json:"severity_text"`
-	Status      string     `json:"status"`
-	StatusText  string     `json:"status_text"`
-	ViewCount   int        `json:"view_count"`
-	LikeCount   int        `json:"like_count"`
-	AuthorID    uint       `json:"author_id"`
-	ReviewerID  *uint      `json:"reviewer_id"`
-	ReviewedAt  *time.Time `json:"reviewed_at"`
-	PublishedAt *time.Time `json:"published_at"`
-	Tags        []TagInfo  `json:"tags"`
-	Metadata    KBMetadata `json:"metadata"`
-	Author      UserInfo   `json:"author"`
-	Reviewer    *UserInfo  `json:"reviewer,omitempty"`
+	ID           uint       `json:"id"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	Title        string     `json:"title"`
+	Content      string     `json:"content"`
+	Summary      string     `json:"summary"`
+	Category     string     `json:"category"`
+	CategoryText string     `json:"category_text"`
+	Type         string     `json:"type"`
+	TypeText     string     `json:"type_text"`
+	Severity     string     `json:"severity"`
+	SeverityText string     `json:"severity_text"`
+	Status       string     `json:"status"`
+	StatusText   string     `json:"status_text"`
+	ViewCount    int        `json:"view_count"`
+	LikeCount    int        `json:"like_count"`
+	AuthorID     uint       `json:"author_id"`
+	ReviewerID   *uint      `json:"reviewer_id"`
+	ReviewedAt   *time.Time `json:"reviewed_at"`
+	PublishedAt  *time.Time `json:"published_at"`
+	Tags         []TagInfo  `json:"tags"`
+	Metadata     KBMetadata `json:"metadata"`
+	Author       UserInfo   `json:"author"`
+	Reviewer     *UserInfo  `json:"reviewer,omitempty"`
 }
 
 // ToKnowledgeInfo 转换为知识库信息
@@ -257,12 +259,12 @@ func (k *KnowledgeBase) ToKnowledgeInfo() KnowledgeInfo {
 		Metadata:     k.Metadata,
 		Author:       k.Author.ToUserInfo(),
 	}
-	
+
 	if k.Reviewer != nil {
 		reviewerInfo := k.Reviewer.ToUserInfo()
 		info.Reviewer = &reviewerInfo
 	}
-	
+
 	return info
 }
 
@@ -360,14 +362,14 @@ func (t *Tag) ToTagInfo() TagInfo {
 
 // KnowledgeStats 知识库统计
 type KnowledgeStats struct {
-	Total       int64                `json:"total"`
-	Published   int64                `json:"published"`
-	Draft       int64                `json:"draft"`
-	ByCategory  map[string]int64     `json:"by_category"`
-	ByType      map[string]int64     `json:"by_type"`
-	TopTags     []TagStats           `json:"top_tags"`
-	TopAuthors  []AuthorStats        `json:"top_authors"`
-	Recent      []KnowledgeSummary   `json:"recent"`
+	Total      int64              `json:"total"`
+	Published  int64              `json:"published"`
+	Draft      int64              `json:"draft"`
+	ByCategory map[string]int64   `json:"by_category"`
+	ByType     map[string]int64   `json:"by_type"`
+	TopTags    []TagStats         `json:"top_tags"`
+	TopAuthors []AuthorStats      `json:"top_authors"`
+	Recent     []KnowledgeSummary `json:"recent"`
 }
 
 // TagStats 标签统计
@@ -389,14 +391,14 @@ type AuthorStats struct {
 
 // KnowledgeSummary 知识库摘要
 type KnowledgeSummary struct {
-	ID          uint      `json:"id"`
-	Title       string    `json:"title"`
-	Category    string    `json:"category"`
-	Type        string    `json:"type"`
-	ViewCount   int       `json:"view_count"`
-	LikeCount   int       `json:"like_count"`
-	CreatedAt   time.Time `json:"created_at"`
-	AuthorName  string    `json:"author_name"`
+	ID         uint      `json:"id"`
+	Title      string    `json:"title"`
+	Category   string    `json:"category"`
+	Type       string    `json:"type"`
+	ViewCount  int       `json:"view_count"`
+	LikeCount  int       `json:"like_count"`
+	CreatedAt  time.Time `json:"created_at"`
+	AuthorName string    `json:"author_name"`
 }
 
 // 知识库分类常量

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"vulnark/internal/model"
 )
 
@@ -19,6 +20,7 @@ type ReportRepository interface {
 	GetStats() (*model.ReportStats, error)
 	UpdateStatus(id uint, status string) error
 	GetByUploaderID(uploaderID uint) ([]*model.Report, error)
+	QueueFileCleanup(paths []string) error
 }
 
 // reportRepository 报告仓储实现
@@ -53,12 +55,68 @@ func (r *reportRepository) GetByID(id uint) (*model.Report, error) {
 
 // Update 更新报告
 func (r *reportRepository) Update(report *model.Report) error {
-	return r.db.Save(report).Error
+	// Save falls back to INSERT when a concurrent delete wins. An UPDATE cannot
+	// resurrect report metadata after its file was queued for cleanup.
+	result := r.db.Model(&model.Report{}).Where("id = ?", report.ID).
+		Select("title", "description", "type", "severity", "status", "asset_ids", "tags", "test_date", "reviewer_id", "review_notes", "updated_at").
+		Updates(report)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 // Delete 删除报告
 func (r *reportRepository) Delete(id uint) error {
-	return r.db.Delete(&model.Report{}, id).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var report model.Report
+		// Comment/attachment creation must lock the same parent row before
+		// inserting, so nothing can be attached after this deletion commits.
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&report, id).Error; err != nil {
+			return err
+		}
+		var commentIDs []uint
+		if err := tx.Model(&model.ReportComment{}).Clauses(clause.Locking{Strength: "UPDATE"}).Where("report_id = ?", id).Pluck("id", &commentIDs).Error; err != nil {
+			return err
+		}
+		attachments := tx.Model(&model.FileAttachment{}).Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("entity_type = ? AND entity_id = ?", model.EntityTypeReport, id)
+		if report.FilePath != "" {
+			attachments = attachments.Or("file_path = ?", report.FilePath)
+		}
+		if len(commentIDs) > 0 {
+			attachments = attachments.Or("entity_type = ? AND entity_id IN ?", "report_comment", commentIDs)
+		}
+		var files []model.FileAttachment
+		if err := attachments.Find(&files).Error; err != nil {
+			return err
+		}
+		paths := []string{report.FilePath}
+		ids := make([]uint, 0, len(files))
+		for _, file := range files {
+			paths = append(paths, file.FilePath)
+			ids = append(ids, file.ID)
+		}
+		if err := EnqueueFileCleanup(tx, paths...); err != nil {
+			return err
+		}
+		if len(ids) > 0 {
+			if err := tx.Delete(&model.FileAttachment{}, ids).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Where("report_id = ?", id).Delete(&model.ReportComment{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&report).Error
+	})
+}
+
+func (r *reportRepository) QueueFileCleanup(paths []string) error {
+	return EnqueueFileCleanup(r.db, paths...)
 }
 
 // List 获取报告列表
@@ -245,8 +303,10 @@ func (r *reportRepository) GetByUploaderID(uploaderID uint) ([]*model.Report, er
 // ReportCommentRepository 报告评论仓储接口
 type ReportCommentRepository interface {
 	Create(comment *model.ReportComment) error
+	GetByID(id uint) (*model.ReportComment, error)
 	GetByReportID(reportID uint) ([]*model.ReportComment, error)
 	Delete(id uint) error
+	DeleteOwned(id uint, userID uint) error
 }
 
 // reportCommentRepository 报告评论仓储实现
@@ -263,7 +323,21 @@ func NewReportCommentRepository(db *gorm.DB) ReportCommentRepository {
 
 // Create 创建评论
 func (r *reportCommentRepository) Create(comment *model.ReportComment) error {
-	return r.db.Create(comment).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var report model.Report
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").First(&report, comment.ReportID).Error; err != nil {
+			return err
+		}
+		return tx.Omit(clause.Associations).Create(comment).Error
+	})
+}
+
+func (r *reportCommentRepository) GetByID(id uint) (*model.ReportComment, error) {
+	var comment model.ReportComment
+	if err := r.db.Preload("User").First(&comment, id).Error; err != nil {
+		return nil, err
+	}
+	return &comment, nil
 }
 
 // GetByReportID 根据报告ID获取评论列表
@@ -278,7 +352,46 @@ func (r *reportCommentRepository) GetByReportID(reportID uint) ([]*model.ReportC
 
 // Delete 删除评论
 func (r *reportCommentRepository) Delete(id uint) error {
-	return r.db.Delete(&model.ReportComment{}, id).Error
+	return r.delete(id, 0)
+}
+
+func (r *reportCommentRepository) DeleteOwned(id uint, userID uint) error {
+	if userID == 0 {
+		return errors.New("无权删除评论")
+	}
+	return r.delete(id, userID)
+}
+
+func (r *reportCommentRepository) delete(id uint, userID uint) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var comment model.ReportComment
+		if err := tx.First(&comment, id).Error; err != nil {
+			return err
+		}
+		var report model.Report
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").First(&report, comment.ReportID).Error; err != nil {
+			return err
+		}
+		query := tx.Clauses(clause.Locking{Strength: "UPDATE"})
+		if userID != 0 {
+			query = query.Where("user_id = ?", userID)
+		}
+		if err := query.First(&comment, id).Error; err != nil {
+			return err
+		}
+		var paths []string
+		attachments := tx.Model(&model.FileAttachment{}).Clauses(clause.Locking{Strength: "UPDATE"}).Where("entity_type = ? AND entity_id = ?", "report_comment", id)
+		if err := attachments.Pluck("file_path", &paths).Error; err != nil {
+			return err
+		}
+		if err := EnqueueFileCleanup(tx, paths...); err != nil {
+			return err
+		}
+		if err := tx.Where("entity_type = ? AND entity_id = ?", "report_comment", id).Delete(&model.FileAttachment{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&comment).Error
+	})
 }
 
 // FileAttachmentRepository 文件附件仓储接口
@@ -304,7 +417,29 @@ func NewFileAttachmentRepository(db *gorm.DB) FileAttachmentRepository {
 
 // Create 创建文件附件
 func (r *fileAttachmentRepository) Create(attachment *model.FileAttachment) error {
-	return r.db.Create(attachment).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		switch attachment.EntityType {
+		case model.EntityTypeReport:
+			var report model.Report
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").First(&report, attachment.EntityID).Error; err != nil {
+				return err
+			}
+		case "report_comment":
+			var comment model.ReportComment
+			if err := tx.First(&comment, attachment.EntityID).Error; err != nil {
+				return err
+			}
+			var report model.Report
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").First(&report, comment.ReportID).Error; err != nil {
+				return err
+			}
+			// Re-read under a current locking read after taking the parent lock.
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&model.ReportComment{}, attachment.EntityID).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Omit(clause.Associations).Create(attachment).Error
+	})
 }
 
 // GetByID 根据ID获取文件附件
@@ -332,10 +467,32 @@ func (r *fileAttachmentRepository) GetByEntityID(entityType string, entityID uin
 
 // Delete 删除文件附件
 func (r *fileAttachmentRepository) Delete(id uint) error {
-	return r.db.Delete(&model.FileAttachment{}, id).Error
+	return r.delete("id = ?", id)
 }
 
 // DeleteByFilePath 根据文件路径删除文件附件
 func (r *fileAttachmentRepository) DeleteByFilePath(filePath string) error {
-	return r.db.Where("file_path = ?", filePath).Delete(&model.FileAttachment{}).Error
+	return r.delete("file_path = ?", filePath)
+}
+
+func (r *fileAttachmentRepository) delete(condition string, value interface{}) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var attachments []model.FileAttachment
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(condition, value).Find(&attachments).Error; err != nil {
+			return err
+		}
+		paths := make([]string, 0, len(attachments))
+		ids := make([]uint, 0, len(attachments))
+		for _, attachment := range attachments {
+			paths = append(paths, attachment.FilePath)
+			ids = append(ids, attachment.ID)
+		}
+		if err := EnqueueFileCleanup(tx, paths...); err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			return nil
+		}
+		return tx.Delete(&model.FileAttachment{}, ids).Error
+	})
 }

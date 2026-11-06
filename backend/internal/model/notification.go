@@ -9,21 +9,23 @@ import (
 
 // Notification 通知模型
 type Notification struct {
-	ID          uint                   `json:"id" gorm:"primarykey"`
-	CreatedAt   time.Time              `json:"created_at"`
-	UpdatedAt   time.Time              `json:"updated_at"`
-	Title       string                 `json:"title" gorm:"size:255;not null"`
-	Content     string                 `json:"content" gorm:"type:text;not null"`
-	Type        string                 `json:"type" gorm:"size:50;not null"`
-	Level       string                 `json:"level" gorm:"size:20;default:info"`
-	RecipientID uint                   `json:"recipient_id" gorm:"not null"`
-	SenderID    *uint                  `json:"sender_id"`
-	IsRead      bool                   `json:"is_read" gorm:"default:false"`
-	ReadAt      *time.Time             `json:"read_at"`
-	Data        NotificationData       `json:"data" gorm:"type:json"`
-	EntityType  string                 `json:"entity_type" gorm:"size:50"`
-	EntityID    *uint                  `json:"entity_id"`
-	ExpiresAt   *time.Time             `json:"expires_at"`
+	ID          uint             `json:"id" gorm:"primarykey"`
+	CreatedAt   time.Time        `json:"created_at"`
+	UpdatedAt   time.Time        `json:"updated_at"`
+	Title       string           `json:"title" gorm:"size:255;not null"`
+	Content     string           `json:"content" gorm:"type:text;not null"`
+	Type        string           `json:"type" gorm:"size:50;not null"`
+	Level       string           `json:"level" gorm:"size:20;default:info"`
+	RecipientID uint             `json:"recipient_id" gorm:"not null"`
+	SenderID    *uint            `json:"sender_id"`
+	IsRead      bool             `json:"is_read" gorm:"default:false"`
+	ReadAt      *time.Time       `json:"read_at"`
+	Data        NotificationData `json:"data" gorm:"type:json"`
+	EntityType  string           `json:"entity_type" gorm:"size:50"`
+	EntityID    *uint            `json:"entity_id"`
+	ExpiresAt   *time.Time       `json:"expires_at"`
+	// DedupKey is nullable so legacy notifications with an empty key remain valid.
+	DedupKey *string `json:"-" gorm:"size:255;uniqueIndex:idx_notifications_dedup_key"`
 
 	// 关联
 	Recipient User  `json:"recipient" gorm:"foreignKey:RecipientID"`
@@ -52,27 +54,31 @@ func (d *NotificationData) Scan(value interface{}) error {
 		*d = NotificationData{}
 		return nil
 	}
-	
-	bytes, ok := value.([]byte)
-	if !ok {
-		return errors.New("无法将值转换为[]byte")
+
+	var data []byte
+	switch value := value.(type) {
+	case []byte:
+		data = value
+	case string:
+		data = []byte(value)
+	default:
+		return errors.New("无法读取通知JSON")
 	}
-	
-	return json.Unmarshal(bytes, d)
+	return json.Unmarshal(data, d)
 }
 
 // EmailTemplate 邮件模板模型
 type EmailTemplate struct {
-	ID          uint      `json:"id" gorm:"primarykey"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	Name        string    `json:"name" gorm:"size:100;not null;uniqueIndex"`
-	Subject     string    `json:"subject" gorm:"size:255;not null"`
-	Content     string    `json:"content" gorm:"type:longtext;not null"`
-	Type        string    `json:"type" gorm:"size:50;not null"`
-	IsActive    bool      `json:"is_active" gorm:"default:true"`
-	Variables   string    `json:"variables" gorm:"type:text"`
-	CreatorID   uint      `json:"creator_id" gorm:"not null"`
+	ID        uint      `json:"id" gorm:"primarykey"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Name      string    `json:"name" gorm:"size:100;not null;uniqueIndex"`
+	Subject   string    `json:"subject" gorm:"size:255;not null"`
+	Content   string    `json:"content" gorm:"type:longtext;not null"`
+	Type      string    `json:"type" gorm:"size:50;not null"`
+	IsActive  bool      `json:"is_active" gorm:"default:true"`
+	Variables string    `json:"variables" gorm:"type:text"`
+	CreatorID uint      `json:"creator_id" gorm:"not null"`
 
 	// 关联
 	Creator User `json:"creator" gorm:"foreignKey:CreatorID"`
@@ -85,18 +91,18 @@ func (EmailTemplate) TableName() string {
 
 // EmailLog 邮件发送日志模型
 type EmailLog struct {
-	ID          uint      `json:"id" gorm:"primarykey"`
-	CreatedAt   time.Time `json:"created_at"`
-	To          string    `json:"to" gorm:"size:255;not null"`
-	Cc          string    `json:"cc" gorm:"size:500"`
-	Bcc         string    `json:"bcc" gorm:"size:500"`
-	Subject     string    `json:"subject" gorm:"size:255;not null"`
-	Content     string    `json:"content" gorm:"type:longtext"`
-	TemplateID  *uint     `json:"template_id"`
-	Status      string    `json:"status" gorm:"size:20;default:pending"`
-	Error       string    `json:"error" gorm:"type:text"`
-	SentAt      *time.Time `json:"sent_at"`
-	SenderID    *uint     `json:"sender_id"`
+	ID         uint       `json:"id" gorm:"primarykey"`
+	CreatedAt  time.Time  `json:"created_at"`
+	To         string     `json:"to" gorm:"size:255;not null"`
+	Cc         string     `json:"cc" gorm:"size:500"`
+	Bcc        string     `json:"bcc" gorm:"size:500"`
+	Subject    string     `json:"subject" gorm:"size:255;not null"`
+	Content    string     `json:"content" gorm:"type:longtext"`
+	TemplateID *uint      `json:"template_id"`
+	Status     string     `json:"status" gorm:"size:20;default:pending"`
+	Error      string     `json:"error" gorm:"type:text"`
+	SentAt     *time.Time `json:"sent_at"`
+	SenderID   *uint      `json:"sender_id"`
 
 	// 关联
 	Template *EmailTemplate `json:"template,omitempty" gorm:"foreignKey:TemplateID"`
@@ -199,22 +205,22 @@ type NotificationSettingUpdateRequest struct {
 
 // NotificationStats 通知统计
 type NotificationStats struct {
-	Total      int64                `json:"total"`
-	Unread     int64                `json:"unread"`
-	ByType     map[string]int64     `json:"by_type"`
-	ByLevel    map[string]int64     `json:"by_level"`
-	Recent     []NotificationSummary `json:"recent"`
+	Total   int64                 `json:"total"`
+	Unread  int64                 `json:"unread"`
+	ByType  map[string]int64      `json:"by_type"`
+	ByLevel map[string]int64      `json:"by_level"`
+	Recent  []NotificationSummary `json:"recent"`
 }
 
 // NotificationSummary 通知摘要
 type NotificationSummary struct {
-	ID          uint      `json:"id"`
-	Title       string    `json:"title"`
-	Type        string    `json:"type"`
-	Level       string    `json:"level"`
-	IsRead      bool      `json:"is_read"`
-	CreatedAt   time.Time `json:"created_at"`
-	SenderName  string    `json:"sender_name"`
+	ID         uint      `json:"id"`
+	Title      string    `json:"title"`
+	Type       string    `json:"type"`
+	Level      string    `json:"level"`
+	IsRead     bool      `json:"is_read"`
+	CreatedAt  time.Time `json:"created_at"`
+	SenderName string    `json:"sender_name"`
 }
 
 // NotificationInfo 通知信息（用于响应）
@@ -262,12 +268,12 @@ func (n *Notification) ToNotificationInfo() NotificationInfo {
 		ExpiresAt:   n.ExpiresAt,
 		Recipient:   n.Recipient.ToUserInfo(),
 	}
-	
+
 	if n.Sender != nil {
 		senderInfo := n.Sender.ToUserInfo()
 		info.Sender = &senderInfo
 	}
-	
+
 	return info
 }
 
@@ -307,11 +313,11 @@ func (n *Notification) GetLevelText() string {
 
 // 通知类型常量
 const (
-	NotificationTypeSystem       = "system"
+	NotificationTypeSystem        = "system"
 	NotificationTypeVulnerability = "vulnerability"
-	NotificationTypeReport       = "report"
-	NotificationTypeSecurity     = "security"
-	NotificationTypeMaintenance  = "maintenance"
+	NotificationTypeReport        = "report"
+	NotificationTypeSecurity      = "security"
+	NotificationTypeMaintenance   = "maintenance"
 )
 
 // 通知级别常量

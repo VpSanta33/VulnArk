@@ -1,6 +1,9 @@
 package controller
 
 import (
+	"mime"
+	"net/http"
+	"path/filepath"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -197,8 +200,10 @@ func (c *ReportController) GetReportContent(ctx *gin.Context) {
 		return
 	}
 
-	// Set appropriate content type
 	ctx.Header("Content-Type", contentType)
+	ctx.Header("X-Content-Type-Options", "nosniff")
+	ctx.Header("Cache-Control", "private, no-store")
+	ctx.Header("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'")
 	ctx.String(200, content)
 }
 
@@ -379,13 +384,19 @@ func (c *ReportController) ArchiveReport(ctx *gin.Context) {
 
 // DownloadReport 下载报告
 // @Summary 下载报告
-// @Description 获取报告下载链接
+// @Description 经鉴权直接返回报告原始文件流（PDF、DOC 或 DOCX），Content-Disposition 为 attachment，支持 Range 请求；不返回 JSON 或公共静态地址。需要 report:read 权限。
 // @Tags 报告管理
-// @Produce json
+// @Produce application/octet-stream
 // @Security ApiKeyAuth
 // @Param id path int true "报告ID"
-// @Success 200 {object} model.Response{data=map[string]string}
+// @Success 200 {file} file "报告原始文件流"
+// @Success 206 {file} file "Range 请求的部分报告内容"
+// @Header 200 {string} Content-Disposition "attachment; filename=报告文件名"
+// @Header 200 {string} Cache-Control "private, no-store"
 // @Failure 400 {object} model.Response
+// @Failure 401 {object} model.Response
+// @Failure 403 {object} model.Response
+// @Failure 404 {object} model.Response
 // @Router /api/v1/reports/{id}/download [get]
 func (c *ReportController) DownloadReport(ctx *gin.Context) {
 	idStr := ctx.Param("id")
@@ -395,13 +406,47 @@ func (c *ReportController) DownloadReport(ctx *gin.Context) {
 		return
 	}
 
-	downloadURL, err := c.reportService.GetDownloadURL(uint(id))
+	report, file, err := c.reportService.OpenReportFile(uint(id))
 	if err != nil {
-		utils.BadRequestResponse(ctx, err.Error())
+		utils.NotFoundResponse(ctx, "报告文件不存在或无法读取")
 		return
 	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		utils.ServerErrorResponse(ctx, "读取报告文件失败")
+		return
+	}
+	ctx.Header("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filepath.Base(report.FileName)}))
+	ctx.Header("Content-Type", "application/octet-stream")
+	ctx.Header("X-Content-Type-Options", "nosniff")
+	ctx.Header("Cache-Control", "private, no-store")
+	http.ServeContent(ctx.Writer, ctx.Request, report.FileName, info.ModTime(), file)
+}
 
-	utils.SuccessResponse(ctx, map[string]string{
-		"download_url": downloadURL,
-	})
+// GetReportDownloadURL 查询受认证保护的报告下载地址
+// @Summary 查询报告下载地址
+// @Description 返回 data.download_url，格式为 /api/v1/reports/{id}/download；该地址仍需 Authorization: Bearer 访问令牌，并通过报告下载 API 返回文件流，不是公开文件链接。需要 report:read 权限。
+// @Tags 报告管理
+// @Produce json
+// @Security ApiKeyAuth
+// @Param id path int true "报告ID"
+// @Success 200 {object} model.Response{data=object{download_url=string}}
+// @Failure 400 {object} model.Response
+// @Failure 401 {object} model.Response
+// @Failure 403 {object} model.Response
+// @Failure 404 {object} model.Response
+// @Router /api/v1/reports/{id}/download-url [get]
+func (c *ReportController) GetReportDownloadURL(ctx *gin.Context) {
+	id, err := strconv.ParseUint(ctx.Param("id"), 10, 32)
+	if err != nil {
+		utils.BadRequestResponse(ctx, "无效的报告ID")
+		return
+	}
+	downloadURL, err := c.reportService.GetDownloadURL(uint(id))
+	if err != nil {
+		utils.NotFoundResponse(ctx, "报告文件不存在")
+		return
+	}
+	utils.SuccessResponse(ctx, map[string]string{"download_url": downloadURL})
 }

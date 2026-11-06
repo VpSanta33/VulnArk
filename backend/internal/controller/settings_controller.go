@@ -38,9 +38,9 @@ func (c *SettingsController) UpdateProfile(ctx *gin.Context) {
 		utils.UnauthorizedResponse(ctx, "用户未登录")
 		return
 	}
-	
+
 	var req model.UserProfileUpdateRequest
-	if err := utils.BindAndValidate(ctx, &req); err != nil {
+	if err := bindProfileRequest(ctx, &req); err != nil {
 		return
 	}
 
@@ -70,7 +70,7 @@ func (c *SettingsController) ChangePassword(ctx *gin.Context) {
 		utils.UnauthorizedResponse(ctx, "用户未登录")
 		return
 	}
-	
+
 	var req model.ChangePasswordRequest
 	if err := utils.BindAndValidate(ctx, &req); err != nil {
 		return
@@ -86,11 +86,12 @@ func (c *SettingsController) ChangePassword(ctx *gin.Context) {
 
 // Setup2FA 设置双因素认证
 // @Summary 设置双因素认证
-// @Description 为当前用户设置双因素认证
+// @Description 创建待验证的 TOTP 绑定，返回 qr_code_url、qr_code_data_url、otpauth_url、secret、expires_at；这些数据仅用于当前用户绑定认证器。Authorization 使用 Bearer 访问令牌或登录返回的 rebind_token。设置后须在有效期内调用 verify，当前步骤不会启用 MFA。
 // @Tags 设置管理
 // @Produce json
 // @Security ApiKeyAuth
 // @Success 200 {object} model.Response{data=model.TwoFactorSetupResponse}
+// @Failure 400 {object} model.Response
 // @Failure 401 {object} model.Response
 // @Router /api/v1/settings/2fa/setup [post]
 func (c *SettingsController) Setup2FA(ctx *gin.Context) {
@@ -111,13 +112,13 @@ func (c *SettingsController) Setup2FA(ctx *gin.Context) {
 
 // Verify2FA 验证双因素认证
 // @Summary 验证双因素认证
-// @Description 验证双因素认证码并启用2FA
+// @Description 使用 setup 后认证器生成的 6 位 code 完成绑定并启用 MFA；Authorization 使用 Bearer 访问令牌或 rebind_token。成功仅此次返回 recovery_codes 数组，请妥善保存；现有访问令牌与重绑定令牌失效，须重新登录。
 // @Tags 设置管理
 // @Accept json
 // @Produce json
 // @Security ApiKeyAuth
-// @Param request body model.TwoFactorVerifyRequest true "2FA验证请求"
-// @Success 200 {object} model.Response
+// @Param request body model.TwoFactorVerifyRequest true "2FA验证请求：code 为 6 位 TOTP"
+// @Success 200 {object} model.Response{data=object{recovery_codes=[]string}}
 // @Failure 400 {object} model.Response
 // @Failure 401 {object} model.Response
 // @Router /api/v1/settings/2fa/verify [post]
@@ -133,21 +134,25 @@ func (c *SettingsController) Verify2FA(ctx *gin.Context) {
 		return
 	}
 
-	if err := c.settingsService.Verify2FA(userID, req.Code); err != nil {
+	codes, err := c.settingsService.Verify2FA(userID, req.Code)
+	if err != nil {
 		utils.BadRequestResponse(ctx, err.Error())
 		return
 	}
 
-	utils.SuccessResponse(ctx, nil)
+	utils.SuccessResponse(ctx, gin.H{"recovery_codes": codes})
 }
 
 // Disable2FA 禁用双因素认证
 // @Summary 禁用双因素认证
-// @Description 禁用当前用户的双因素认证
+// @Description 使用当前 TOTP 或未使用的恢复码（code 字段）禁用当前用户 MFA。须使用 Bearer 访问令牌；成功后当前用户所有会话失效，须重新登录。
 // @Tags 设置管理
+// @Accept json
 // @Produce json
 // @Security ApiKeyAuth
+// @Param request body object{code=string} true "必填 code：当前 TOTP 或恢复码"
 // @Success 200 {object} model.Response
+// @Failure 400 {object} model.Response
 // @Failure 401 {object} model.Response
 // @Router /api/v1/settings/2fa [delete]
 func (c *SettingsController) Disable2FA(ctx *gin.Context) {
@@ -157,7 +162,13 @@ func (c *SettingsController) Disable2FA(ctx *gin.Context) {
 		return
 	}
 
-	if err := c.settingsService.Disable2FA(userID); err != nil {
+	var req struct {
+		Code string `json:"code" binding:"required"`
+	}
+	if err := utils.BindAndValidate(ctx, &req); err != nil {
+		return
+	}
+	if err := c.settingsService.Disable2FA(userID, req.Code); err != nil {
 		utils.BadRequestResponse(ctx, err.Error())
 		return
 	}
@@ -167,7 +178,7 @@ func (c *SettingsController) Disable2FA(ctx *gin.Context) {
 
 // Get2FAStatus 获取双因素认证状态
 // @Summary 获取双因素认证状态
-// @Description 获取当前用户的双因素认证状态
+// @Description 返回 enabled、pending、needs_rebind、recovery_codes_remaining，不返回已保存的 MFA 秘密或恢复码。Authorization 使用 Bearer 访问令牌或登录返回的 rebind_token。
 // @Tags 设置管理
 // @Produce json
 // @Security ApiKeyAuth
@@ -233,7 +244,7 @@ func (c *SettingsController) UpdateSystemSettings(ctx *gin.Context) {
 		utils.UnauthorizedResponse(ctx, "用户未登录")
 		return
 	}
-	
+
 	var req model.SystemSettingsRequest
 	if err := utils.BindAndValidate(ctx, &req); err != nil {
 		return
@@ -290,7 +301,7 @@ func (c *SettingsController) UpdateNotificationSettings(ctx *gin.Context) {
 		utils.UnauthorizedResponse(ctx, "用户未登录")
 		return
 	}
-	
+
 	var req model.NotificationSettingsRequest
 	if err := utils.BindAndValidate(ctx, &req); err != nil {
 		return
@@ -322,7 +333,7 @@ func (c *SettingsController) ExportData(ctx *gin.Context) {
 		return
 	}
 	dataType := ctx.Query("type")
-	
+
 	if dataType == "" {
 		utils.BadRequestResponse(ctx, "请指定数据类型")
 		return
@@ -360,7 +371,7 @@ func (c *SettingsController) ImportData(ctx *gin.Context) {
 		return
 	}
 	dataType := ctx.PostForm("type")
-	
+
 	if dataType == "" {
 		utils.BadRequestResponse(ctx, "请指定数据类型")
 		return

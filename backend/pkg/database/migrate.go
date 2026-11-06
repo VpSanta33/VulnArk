@@ -1,29 +1,19 @@
 package database
 
 import (
-	"fmt"
-	"log"
-	"reflect"
+	"sync"
+
+	"gorm.io/gorm/schema"
 )
 
-// AutoMigrateModels 自动迁移所有模型 - 现在由MigrationManager处理
-func AutoMigrateModels() error {
-	if DB == nil {
-		return fmt.Errorf("数据库连接未初始化")
-	}
+// AutoMigrateModels is the legacy startup entry point. Startup now checks only;
+// deployments must explicitly invoke RunMigrations (the -migrate command).
+func AutoMigrateModels() error { return CheckMigrations() }
 
-	log.Println("开始自动迁移数据库表...")
-	log.Println("⚡ 跳过基础自动迁移，使用MigrationManager进行完整迁移")
-	log.Println("数据库表自动迁移完成")
-	return nil
-}
-
-// getTableName 获取模型对应的表名
-func getTableName(model interface{}) string {
-	// 使用反射获取类型名
-	t := reflect.TypeOf(model)
-	if t.Kind() == reflect.Ptr {
-		t = t.Elem()
+func getTableName(value interface{}) string {
+	parsed, err := schema.Parse(value, &sync.Map{}, schema.NamingStrategy{})
+	if err != nil {
+		return ""
 	}
-	return t.Name()
+	return parsed.Table
 }

@@ -1,65 +1,76 @@
 package testutil
 
 import (
+	"fmt"
+	"sync/atomic"
+	"testing"
+
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"vulnark/internal/model"
 )
 
-// NewTestDB 创建用于测试的SQLite内存数据库
-func NewTestDB() *gorm.DB {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Silent),
-	})
-	if err != nil {
-		panic("failed to connect database: " + err.Error())
-	}
+var testDatabaseSequence atomic.Uint64
 
-	// 自动迁移测试数据库
-	err = db.AutoMigrate(
-		&model.Role{},
-		&model.User{},
-		&model.Asset{},
-		&model.Vulnerability{},
-		&model.OWASPCategory{},
-		&model.VulnerabilityAttachment{},
-	)
+// NewTestDB creates an isolated in-memory database backed by a single connection.
+// Passing t registers Close automatically; the optional argument preserves older
+// callers that defer CleanupTestData themselves.
+func NewTestDB(tests ...testing.TB) *gorm.DB {
+	name := fmt.Sprintf("file:vulnark_test_%d?mode=memory&cache=shared", testDatabaseSequence.Add(1))
+	db, err := gorm.Open(sqlite.Open(name), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	if err != nil {
-		panic("failed to migrate database: " + err.Error())
+		panic("failed to connect test database: " + err.Error())
 	}
-
+	pool, err := db.DB()
+	if err != nil {
+		panic("failed to get test connection: " + err.Error())
+	}
+	pool.SetMaxOpenConns(1)
+	pool.SetMaxIdleConns(1)
+	// No connection expiration: closing the last connection destroys SQLite RAM.
+	if err := db.AutoMigrate(
+		&model.Role{}, &model.User{}, &model.MFAChallenge{}, &model.Asset{},
+		&model.OWASPCategory{}, &model.Vulnerability{}, &model.VulnerabilityAttachment{},
+		&model.SLAPolicy{}, &model.VulnerabilityRetest{}, &model.VulnerabilityDuplicateLink{},
+		&model.VulnerabilityDuplicateIgnore{},
+	); err != nil {
+		_ = pool.Close()
+		panic("failed to migrate test database: " + err.Error())
+	}
+	for _, t := range tests {
+		t.Helper()
+		t.Cleanup(func() {
+			if err := pool.Close(); err != nil {
+				t.Errorf("close test database: %v", err)
+			}
+		})
+	}
 	return db
 }
 
-// SeedTestData 为测试数据库填充测试数据
 func SeedTestData(db *gorm.DB) {
-	// 创建测试角色
-	adminRole := &model.Role{
-		ID:          1,
-		Name:        "测试管理员",
-		Description: "测试管理员角色",
-		Permissions: []string{"*"},
+	role := &model.Role{ID: 1, Name: "测试管理员", Description: "测试管理员角色", Permissions: model.Permissions{"*"}}
+	if err := db.Create(role).Error; err != nil {
+		panic("seed test role: " + err.Error())
 	}
-	db.Create(adminRole)
-
-	// 创建测试用户
-	testUser := &model.User{
-		ID:           1,
-		Username:     "testuser",
-		Email:        "test@example.com",
-		PasswordHash: "$2a$10$example_hash",
-		RealName:     "测试用户",
-		RoleID:       1,
-		Status:       1,
+	user := &model.User{ID: 1, Username: "testuser", Email: "test@example.com", PasswordHash: "$2a$10$example_hash", RealName: "测试用户", RoleID: 1, Status: 1}
+	if err := db.Create(user).Error; err != nil {
+		panic("seed test user: " + err.Error())
 	}
-	db.Create(testUser)
 }
 
-// CleanupTestData 清理测试数据
+// Closing the only pool discards every table and releases its memory. DELETEs
+// alone kept connections alive and made cleanup depend on foreign-key ordering.
 func CleanupTestData(db *gorm.DB) {
-	db.Exec("DELETE FROM users")
-	db.Exec("DELETE FROM roles")
-	db.Exec("DELETE FROM assets")
-	db.Exec("DELETE FROM vulnerabilities")
+	if db == nil {
+		return
+	}
+	pool, err := db.DB()
+	if err != nil {
+		panic("get test connection for cleanup: " + err.Error())
+	}
+	if err := pool.Close(); err != nil {
+		panic("close test database: " + err.Error())
+	}
 }

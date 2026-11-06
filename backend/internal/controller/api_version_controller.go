@@ -240,7 +240,7 @@ func (c *APIVersionController) GetAPIHealth(ctx *gin.Context) {
 // @Security ApiKeyAuth
 // @Success 200 {object} model.Response{data=map[string]interface{}}
 // @Failure 401 {object} model.Response
-// @Router /api/metrics [get]
+// @Router /api/v1/metrics [get]
 func (c *APIVersionController) GetAPIMetrics(ctx *gin.Context) {
 	metrics := map[string]interface{}{
 		"overview": map[string]interface{}{

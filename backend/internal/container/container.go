@@ -12,92 +12,96 @@ import (
 // Container 依赖注入容器
 type Container struct {
 	DB *gorm.DB
-	
+
 	// Storage
 	StorageService storage.StorageService
-	
+
 	// Repositories
-	UserRepo           repository.UserRepository
-	RoleRepo           repository.RoleRepository
-	AssetRepo          repository.AssetRepository
-	VulnRepo           repository.VulnerabilityRepository
-	OWASPRepo          repository.OWASPCategoryRepository
-	AnalyticsRepo      repository.AnalyticsRepository
-	AssignmentRepo     repository.AssignmentRepository
-	KnowledgeRepo      repository.KnowledgeRepository
-	ReportRepo         repository.ReportRepository
-	NotificationRepo   repository.NotificationRepository
-	PermissionRepo     repository.PermissionRepository
-	SettingsRepo       repository.SettingsRepository
-	AIRepo             repository.AIRepository
-	TagRepo            repository.TagRepository
-	TemplateRepo       repository.TemplateRepository
-	AssignmentRuleRepo repository.AssignmentRuleRepository
-	TimelineRepo       repository.TimelineRepository
-	RolePermissionRepo repository.RolePermissionRepository
-	SystemConfigRepo   repository.SystemConfigRepository
-	AuditLogRepo       repository.AuditLogRepository
-	EmailTemplateRepo  repository.EmailTemplateRepository
-	EmailLogRepo       repository.EmailLogRepository
+	UserRepo                repository.UserRepository
+	RoleRepo                repository.RoleRepository
+	AssetRepo               repository.AssetRepository
+	VulnRepo                repository.VulnerabilityRepository
+	OWASPRepo               repository.OWASPCategoryRepository
+	AnalyticsRepo           repository.AnalyticsRepository
+	AssignmentRepo          repository.AssignmentRepository
+	KnowledgeRepo           repository.KnowledgeRepository
+	ReportRepo              repository.ReportRepository
+	NotificationRepo        repository.NotificationRepository
+	PermissionRepo          repository.PermissionRepository
+	SettingsRepo            repository.SettingsRepository
+	AIRepo                  repository.AIRepository
+	TagRepo                 repository.TagRepository
+	TemplateRepo            repository.TemplateRepository
+	AssignmentRuleRepo      repository.AssignmentRuleRepository
+	TimelineRepo            repository.TimelineRepository
+	RolePermissionRepo      repository.RolePermissionRepository
+	SystemConfigRepo        repository.SystemConfigRepository
+	AuditLogRepo            repository.AuditLogRepository
+	EmailTemplateRepo       repository.EmailTemplateRepository
+	EmailLogRepo            repository.EmailLogRepository
 	NotificationSettingRepo repository.NotificationSettingRepository
-	ReportCommentRepo  repository.ReportCommentRepository
-	FileAttachmentRepo repository.FileAttachmentRepository
-	
+	ReportCommentRepo       repository.ReportCommentRepository
+	FileAttachmentRepo      repository.FileAttachmentRepository
+
 	// Services
-	UserService        service.UserService
-	RoleService        service.RoleService
-	AssetService       service.AssetService
-	VulnService        service.VulnerabilityService
-	AnalyticsService   service.AnalyticsService
-	AssignmentService  service.AssignmentService
-	KnowledgeService   service.KnowledgeService
-	ReportService      service.ReportService
+	UserService         service.UserService
+	RoleService         service.RoleService
+	AssetService        service.AssetService
+	VulnService         service.VulnerabilityService
+	AnalyticsService    service.AnalyticsService
+	AssignmentService   service.AssignmentService
+	KnowledgeService    service.KnowledgeService
+	ReportService       service.ReportService
 	NotificationService service.NotificationService
-	PermissionService  service.PermissionService
-	SettingsService    service.SettingsService
-	AIService          service.AIService
-	AuditLogService    service.AuditLogService
+	PermissionService   service.PermissionService
+	SettingsService     service.SettingsService
+	AIService           service.AIService
+	AuditLogService     service.AuditLogService
 	SystemConfigService service.SystemConfigService
-	TagService         service.TagService
-	TemplateService    service.TemplateService
-	
+	TagService          service.TagService
+	TemplateService     service.TemplateService
+	SLAService          service.SLAService
+	RetestService       service.VulnerabilityRetestService
+
 	// Controllers
-	UserController        *controller.UserController
-	AssetController       *controller.AssetController
-	VulnController        *controller.VulnerabilityController
-	RoleController        *controller.RoleController
-	AnalyticsController   *controller.AnalyticsController
-	AssignmentController  *controller.AssignmentController
-	KnowledgeController   *controller.KnowledgeController
-	ReportController      *controller.ReportController
+	UserController         *controller.UserController
+	AssetController        *controller.AssetController
+	VulnController         *controller.VulnerabilityController
+	RoleController         *controller.RoleController
+	AnalyticsController    *controller.AnalyticsController
+	AssignmentController   *controller.AssignmentController
+	KnowledgeController    *controller.KnowledgeController
+	ReportController       *controller.ReportController
 	NotificationController *controller.NotificationController
-	PermissionController  *controller.PermissionController
-	SettingsController    *controller.SettingsController
-	SystemController      *controller.SystemController
-	AIController          *controller.AIController
-	APITestController     *controller.APITestController
-	APIVersionController  *controller.APIVersionController
+	PermissionController   *controller.PermissionController
+	SettingsController     *controller.SettingsController
+	SystemController       *controller.SystemController
+	AIController           *controller.AIController
+	APITestController      *controller.APITestController
+	APIVersionController   *controller.APIVersionController
+	SLAController          *controller.SLAController
+	RetestController       *controller.VulnerabilityRetestController
 }
 
 // NewContainer 创建新的依赖注入容器
 func NewContainer() *Container {
 	container := &Container{}
-	
+
 	// 初始化数据库连接
 	container.DB = database.GetDB()
-	
+
 	// 初始化存储服务
 	container.StorageService = storage.NewLocalStorageService()
-	
+
 	// 初始化 Repositories
 	container.initRepositories()
-	
+
 	// 初始化 Services
 	container.initServices()
-	
+
 	// 初始化 Controllers
 	container.initControllers()
-	
+
 	return container
 }
 
@@ -137,11 +141,15 @@ func (c *Container) initServices() {
 	c.AssetService = service.NewAssetService(c.AssetRepo, c.UserRepo)
 	c.VulnService = service.NewVulnerabilityService(c.VulnRepo, c.AssetRepo, c.UserRepo, c.OWASPRepo)
 	c.AnalyticsService = service.NewAnalyticsService(c.AnalyticsRepo)
-	c.AssignmentService = service.NewAssignmentService(c.AssignmentRepo, c.AssignmentRuleRepo, c.TimelineRepo, c.VulnRepo, c.UserRepo, c.AssetRepo)
-	c.KnowledgeService = service.NewKnowledgeService(c.KnowledgeRepo, c.TagRepo, c.UserRepo)
-	c.ReportService = service.NewReportService(c.ReportRepo, c.ReportCommentRepo, c.FileAttachmentRepo, c.UserRepo, c.AssetRepo)
+	c.AssignmentService = service.NewAssignmentService(c.DB, c.AssignmentRepo, c.AssignmentRuleRepo, c.TimelineRepo, c.VulnRepo, c.UserRepo, c.AssetRepo)
+	c.KnowledgeService = service.NewKnowledgeService(c.DB, c.KnowledgeRepo, c.TagRepo, c.UserRepo)
+	c.ReportService = service.NewReportService(c.ReportRepo, c.ReportCommentRepo, c.FileAttachmentRepo, c.UserRepo, c.AssetRepo, c.StorageService)
 	c.NotificationService = service.NewNotificationService(c.NotificationRepo, c.EmailTemplateRepo, c.EmailLogRepo, c.NotificationSettingRepo, c.UserRepo, c.VulnRepo, c.ReportRepo)
 	c.PermissionService = service.NewPermissionService(c.PermissionRepo, c.RolePermissionRepo, c.RoleRepo, c.UserRepo)
+	c.SLAService = service.NewSLAService(c.DB, repository.NewSLARepository(c.DB), c.NotificationRepo)
+	service.ConfigureVulnerabilitySLA(c.VulnService, c.SLAService)
+	service.ConfigureAssignmentSLA(c.AssignmentService, c.SLAService)
+	c.RetestService = service.NewVulnerabilityRetestService(repository.NewVulnerabilityRetestRepository(c.DB), c.VulnRepo, c.PermissionService)
 	c.SettingsService = service.NewSettingsService(c.UserRepo, c.SettingsRepo)
 	c.AIService = service.NewAIService(c.AIRepo)
 	c.AuditLogService = service.NewAuditLogService(c.AuditLogRepo)
@@ -152,11 +160,14 @@ func (c *Container) initServices() {
 
 // initControllers 初始化所有Controller
 func (c *Container) initControllers() {
-	c.UserController = controller.NewUserController(c.UserService, c.RoleService)
+	c.UserController = controller.NewUserController(c.UserService, c.RoleService, c.PermissionService)
 	c.AssetController = controller.NewAssetController(c.AssetService)
 	c.VulnController = controller.NewVulnerabilityController(c.VulnService, c.StorageService)
-	c.RoleController = controller.NewRoleController(c.RoleService)
-	c.AnalyticsController = controller.NewAnalyticsController(c.AnalyticsService)
+	c.VulnController.SetPermissionService(c.PermissionService)
+	c.SLAController = controller.NewSLAController(c.SLAService)
+	c.RetestController = controller.NewVulnerabilityRetestController(c.RetestService, c.StorageService)
+	c.RoleController = controller.NewRoleController(c.RoleService, c.PermissionService)
+	c.AnalyticsController = controller.NewAnalyticsController(c.AnalyticsService, c.PermissionService)
 	c.AssignmentController = controller.NewAssignmentController(c.AssignmentService)
 	c.KnowledgeController = controller.NewKnowledgeController(c.KnowledgeService, c.TagService, c.TemplateService)
 	c.ReportController = controller.NewReportController(c.ReportService)

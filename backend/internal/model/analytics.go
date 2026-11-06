@@ -7,10 +7,11 @@ import (
 // DashboardStats 仪表盘统计数据
 type DashboardStats struct {
 	// 总体统计
-	TotalVulnerabilities int64 `json:"total_vulnerabilities"`
-	TotalAssets          int64 `json:"total_assets"`
-	TotalUsers           int64 `json:"total_users"`
-	TotalReports         int64 `json:"total_reports"`
+	TotalVulnerabilities      int64 `json:"total_vulnerabilities"`
+	TotalAssets               int64 `json:"total_assets"`
+	AssetsWithVulnerabilities int64 `json:"assets_with_vulnerabilities"` // 存在漏洞记录的资产去重数量
+	TotalUsers                int64 `json:"total_users"`
+	TotalReports              int64 `json:"total_reports"`
 
 	// 时间范围统计 - 用于计算百分比变化
 	VulnerabilityTimeStats TimeRangeStats `json:"vulnerability_time_stats"`
@@ -67,9 +68,9 @@ type VulnerabilityTypeCount struct {
 
 // UserActivity 用户活动统计
 type UserActivity struct {
-	UserID       uint   `json:"user_id"`
-	Username     string `json:"username"`
-	RealName     string `json:"real_name"`
+	UserID        uint   `json:"user_id"`
+	Username      string `json:"username"`
+	RealName      string `json:"real_name"`
 	ActivityCount int64  `json:"activity_count"`
 }
 
@@ -90,22 +91,22 @@ type TrendPoint struct {
 type VulnerabilityAnalytics struct {
 	// 时间范围统计
 	TimeRangeStats TimeRangeStats `json:"time_range_stats"`
-	
+
 	// 严重程度趋势
 	SeverityTrend []SeverityTrendPoint `json:"severity_trend"`
-	
+
 	// 状态分布
 	StatusDistribution []StatusCount `json:"status_distribution"`
-	
+
 	// OWASP分类统计
 	OWASPStats []OWASPCount `json:"owasp_stats"`
-	
+
 	// 资产漏洞分布
 	AssetVulnerabilityDistribution []AssetVulnerabilityCount `json:"asset_vulnerability_distribution"`
-	
+
 	// 修复时间统计
 	FixTimeStats FixTimeStats `json:"fix_time_stats"`
-	
+
 	// 发现者统计
 	DiscovererStats []DiscovererCount `json:"discoverer_stats"`
 }
@@ -159,8 +160,8 @@ type AssetVulnerabilityCount struct {
 
 // FixTimeStats 修复时间统计
 type FixTimeStats struct {
-	AverageFixTime float64            `json:"average_fix_time"` // 平均修复时间（天）
-	MedianFixTime  float64            `json:"median_fix_time"`  // 中位数修复时间（天）
+	AverageFixTime float64             `json:"average_fix_time"` // 平均修复时间（天）
+	MedianFixTime  float64             `json:"median_fix_time"`  // 中位数修复时间（天）
 	FixTimeRanges  []FixTimeRangeCount `json:"fix_time_ranges"`
 }
 
@@ -182,16 +183,16 @@ type DiscovererCount struct {
 type AssetAnalytics struct {
 	// 资产类型分布
 	TypeDistribution []AssetTypeCount `json:"type_distribution"`
-	
+
 	// 重要性级别分布
 	ImportanceDistribution []ImportanceCount `json:"importance_distribution"`
-	
+
 	// 资产状态分布
 	StatusDistribution []AssetStatusCount `json:"status_distribution"`
-	
+
 	// 资产漏洞风险评估
 	RiskAssessment []AssetRiskCount `json:"risk_assessment"`
-	
+
 	// 资产增长趋势
 	GrowthTrend []TrendPoint `json:"growth_trend"`
 }
@@ -211,29 +212,29 @@ type AssetStatusCount struct {
 
 // AssetRiskCount 资产风险统计
 type AssetRiskCount struct {
-	AssetID        uint   `json:"asset_id"`
-	AssetName      string `json:"asset_name"`
-	AssetType      string `json:"asset_type"`
-	RiskScore      int    `json:"risk_score"`
+	AssetID            uint   `json:"asset_id"`
+	AssetName          string `json:"asset_name"`
+	AssetType          string `json:"asset_type"`
+	RiskScore          int    `json:"risk_score"`
 	VulnerabilityCount int64  `json:"vulnerability_count"`
-	CriticalCount  int64  `json:"critical_count"`
-	HighCount      int64  `json:"high_count"`
+	CriticalCount      int64  `json:"critical_count"`
+	HighCount          int64  `json:"high_count"`
 }
 
 // ReportAnalytics 报告分析数据
 type ReportAnalytics struct {
 	// 报告状态分布
 	StatusDistribution []ReportStatusCount `json:"status_distribution"`
-	
+
 	// 报告类型分布
 	TypeDistribution []ReportTypeCount `json:"type_distribution"`
-	
+
 	// 提交趋势
 	SubmissionTrend []TrendPoint `json:"submission_trend"`
-	
+
 	// 审核时间统计
 	ReviewTimeStats ReviewTimeStats `json:"review_time_stats"`
-	
+
 	// 提交者统计
 	SubmitterStats []SubmitterCount `json:"submitter_stats"`
 }
@@ -268,16 +269,16 @@ type SubmitterCount struct {
 type UserAnalytics struct {
 	// 用户角色分布
 	RoleDistribution []UserRoleCount `json:"role_distribution"`
-	
+
 	// 用户状态分布
 	StatusDistribution []UserStatusCount `json:"status_distribution"`
-	
+
 	// 用户活动统计
 	ActivityStats []UserActivityStats `json:"activity_stats"`
-	
+
 	// 登录趋势
 	LoginTrend []TrendPoint `json:"login_trend"`
-	
+
 	// 部门分布
 	DepartmentDistribution []DepartmentCount `json:"department_distribution"`
 }
@@ -297,12 +298,12 @@ type UserStatusCount struct {
 
 // UserActivityStats 用户活动统计
 type UserActivityStats struct {
-	UserID            uint   `json:"user_id"`
-	Username          string `json:"username"`
-	RealName          string `json:"real_name"`
-	VulnerabilitiesFound int64  `json:"vulnerabilities_found"`
-	ReportsSubmitted  int64  `json:"reports_submitted"`
-	LastLoginAt       *time.Time `json:"last_login_at"`
+	UserID               uint       `json:"user_id"`
+	Username             string     `json:"username"`
+	RealName             string     `json:"real_name"`
+	VulnerabilitiesFound int64      `json:"vulnerabilities_found"`
+	ReportsSubmitted     int64      `json:"reports_submitted"`
+	LastLoginAt          *time.Time `json:"last_login_at"`
 }
 
 // DepartmentCount 部门统计
@@ -313,22 +314,22 @@ type DepartmentCount struct {
 
 // AnalyticsRequest 分析请求参数
 type AnalyticsRequest struct {
-	StartDate string `json:"start_date" form:"start_date"`
-	EndDate   string `json:"end_date" form:"end_date"`
+	StartDate   string `json:"start_date" form:"start_date"`
+	EndDate     string `json:"end_date" form:"end_date"`
 	Granularity string `json:"granularity" form:"granularity"` // day, week, month
-	AssetID   string `json:"asset_id" form:"asset_id"`
-	UserID    string `json:"user_id" form:"user_id"`
-	Severity  string `json:"severity" form:"severity"`
-	Status    string `json:"status" form:"status"`
-	Category  string `json:"category" form:"category"`
+	AssetID     string `json:"asset_id" form:"asset_id"`
+	UserID      string `json:"user_id" form:"user_id"`
+	Severity    string `json:"severity" form:"severity"`
+	Status      string `json:"status" form:"status"`
+	Category    string `json:"category" form:"category"`
 }
 
 // ExportRequest 导出请求参数
 type ExportRequest struct {
-	Type      string `json:"type" binding:"required,oneof=dashboard vulnerability asset report user"`
-	Format    string `json:"format" binding:"required,oneof=excel pdf csv"`
-	StartDate string `json:"start_date"`
-	EndDate   string `json:"end_date"`
+	Type      string                 `json:"type" binding:"required,oneof=dashboard vulnerability asset report user"`
+	Format    string                 `json:"format" binding:"required,oneof=excel pdf csv"`
+	StartDate string                 `json:"start_date"`
+	EndDate   string                 `json:"end_date"`
 	Filters   map[string]interface{} `json:"filters"`
 }
 

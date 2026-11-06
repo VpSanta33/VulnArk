@@ -4,111 +4,93 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"vulnark/internal/model"
+	"vulnark/internal/repository"
 	"vulnark/pkg/auth"
 	"vulnark/pkg/utils"
 )
 
-// AuthMiddleware JWT认证中间件
-func AuthMiddleware() gin.HandlerFunc {
-	jwtManager := auth.NewJWTManager()
-	
-	return func(c *gin.Context) {
-		// 获取Authorization头
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			utils.UnauthorizedResponse(c, "缺少认证令牌")
-			c.Abort()
-			return
-		}
-
-		// 检查Bearer前缀
-		if !strings.HasPrefix(authHeader, "Bearer ") {
-			utils.UnauthorizedResponse(c, "认证令牌格式错误")
-			c.Abort()
-			return
-		}
-
-		// 提取令牌
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		if tokenString == "" {
-			utils.UnauthorizedResponse(c, "认证令牌为空")
-			c.Abort()
-			return
-		}
-
-		// 解析令牌
-		claims, err := jwtManager.ParseToken(tokenString)
-		if err != nil {
-			utils.UnauthorizedResponse(c, "认证令牌无效: "+err.Error())
-			c.Abort()
-			return
-		}
-
-		// 将用户信息存储到上下文
-		c.Set("user_id", claims.UserID)
-		c.Set("username", claims.Username)
-		c.Set("role_id", claims.RoleID)
-		c.Set("claims", claims)
-
-		c.Next()
-	}
+func AuthMiddleware(repo repository.UserRepository, managers ...*auth.JWTManager) gin.HandlerFunc {
+	return authentication(repo, managers, false, false)
 }
 
-// OptionalAuthMiddleware 可选认证中间件（不强制要求认证）
-func OptionalAuthMiddleware() gin.HandlerFunc {
-	jwtManager := auth.NewJWTManager()
-	
+// MFARebindMiddleware accepts restricted rebind tokens only for the MFA routes.
+func MFARebindMiddleware(repo repository.UserRepository, managers ...*auth.JWTManager) gin.HandlerFunc {
+	return authentication(repo, managers, true, false)
+}
+
+func OptionalAuthMiddleware(repo repository.UserRepository, managers ...*auth.JWTManager) gin.HandlerFunc {
+	return authentication(repo, managers, false, true)
+}
+
+func authentication(repo repository.UserRepository, managers []*auth.JWTManager, allowRebind, optional bool) gin.HandlerFunc {
+	manager := auth.NewJWTManager()
+	if len(managers) > 0 {
+		manager = managers[0]
+	}
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
-			tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-			if claims, err := jwtManager.ParseToken(tokenString); err == nil {
-				c.Set("user_id", claims.UserID)
-				c.Set("username", claims.Username)
-				c.Set("role_id", claims.RoleID)
-				c.Set("claims", claims)
+		deny := func() {
+			if !optional {
+				utils.UnauthorizedResponse(c, "认证已失效，请重新登录")
+				c.Abort()
 			}
 		}
+		parts := strings.Fields(c.GetHeader("Authorization"))
+		if len(parts) != 2 || parts[0] != "Bearer" || manager == nil || repo == nil {
+			deny()
+			return
+		}
+		purposes := []string{"access"}
+		if allowRebind {
+			purposes = append(purposes, "mfa_rebind")
+		}
+		claims, err := manager.ParsePurposeToken(parts[1], purposes...)
+		if err != nil {
+			deny()
+			return
+		}
+		user, err := repo.GetByID(claims.UserID)
+		if err != nil || !user.IsActive() || user.TokenVersion != claims.TokenVersion {
+			deny()
+			return
+		}
+		if claims.Purpose == "mfa_rebind" && !needsMFARebind(user) {
+			deny()
+			return
+		}
+		if claims.Purpose == "access" && needsMFARebind(user) {
+			deny()
+			return
+		}
+		c.Set("user_id", user.ID)
+		c.Set("username", user.Username)
+		c.Set("role_id", user.RoleID)
+		c.Set("claims", claims)
 		c.Next()
 	}
 }
 
-// GetCurrentUserID 获取当前用户ID
+func needsMFARebind(user *model.User) bool {
+	return user.TwoFactorNeedsRebind || (user.TwoFactorEnabled && !strings.HasPrefix(user.TwoFactorSecret, "v1:"))
+}
+
 func GetCurrentUserID(c *gin.Context) (uint, bool) {
-	if userID, exists := c.Get("user_id"); exists {
-		if id, ok := userID.(uint); ok {
-			return id, true
-		}
-	}
-	return 0, false
+	value, exists := c.Get("user_id")
+	id, ok := value.(uint)
+	return id, exists && ok
 }
-
-// GetCurrentUsername 获取当前用户名
 func GetCurrentUsername(c *gin.Context) (string, bool) {
-	if username, exists := c.Get("username"); exists {
-		if name, ok := username.(string); ok {
-			return name, true
-		}
-	}
-	return "", false
+	value, exists := c.Get("username")
+	name, ok := value.(string)
+	return name, exists && ok
 }
-
-// GetCurrentRoleID 获取当前用户角色ID
 func GetCurrentRoleID(c *gin.Context) (uint, bool) {
-	if roleID, exists := c.Get("role_id"); exists {
-		if id, ok := roleID.(uint); ok {
-			return id, true
-		}
-	}
-	return 0, false
+	value, exists := c.Get("role_id")
+	id, ok := value.(uint)
+	return id, exists && ok
 }
-
-// GetCurrentClaims 获取当前用户Claims
 func GetCurrentClaims(c *gin.Context) (*auth.Claims, bool) {
-	if claims, exists := c.Get("claims"); exists {
-		if c, ok := claims.(*auth.Claims); ok {
-			return c, true
-		}
-	}
-	return nil, false
+	value, exists := c.Get("claims")
+	claims, ok := value.(*auth.Claims)
+	return claims, exists && ok
 }

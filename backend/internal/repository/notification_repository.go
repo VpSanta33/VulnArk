@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"errors"
 	"strconv"
 	"time"
@@ -22,6 +23,8 @@ type NotificationRepository interface {
 	GetUnreadCount(recipientID uint) (int64, error)
 	GetStats(recipientID uint) (*model.NotificationStats, error)
 	DeleteExpired() error
+	CreateIfAbsent(notification *model.Notification) (bool, error)
+	CreateIfAbsentContext(ctx context.Context, notification *model.Notification) (bool, error)
 }
 
 // notificationRepository 通知仓储实现
@@ -39,6 +42,33 @@ func NewNotificationRepository(db *gorm.DB) NotificationRepository {
 // Create 创建通知
 func (r *notificationRepository) Create(notification *model.Notification) error {
 	return r.db.Create(notification).Error
+}
+
+// CreateIfAbsent atomically creates a notification when its non-empty dedup key
+// has not been seen. Empty keys intentionally retain normal create semantics.
+func (r *notificationRepository) CreateIfAbsent(notification *model.Notification) (bool, error) {
+	return r.CreateIfAbsentContext(context.Background(), notification)
+}
+
+func (r *notificationRepository) CreateIfAbsentContext(ctx context.Context, notification *model.Notification) (bool, error) {
+	if notification == nil {
+		return false, errors.New("通知不能为空")
+	}
+	db := r.db.WithContext(ctx).Omit("Recipient", "Sender")
+	if notification.DedupKey == nil || *notification.DedupKey == "" {
+		err := db.Create(notification).Error
+		return err == nil, err
+	}
+	if err := db.Create(notification).Error; err != nil {
+		// Only the exact dedup key makes a create failure idempotent. Foreign
+		// key or other constraint failures must not be silently swallowed.
+		var existing model.Notification
+		if lookup := r.db.WithContext(ctx).Select("id").Where("dedup_key = ?", *notification.DedupKey).First(&existing).Error; lookup == nil {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // GetByID 根据ID获取通知
@@ -129,11 +159,11 @@ func (r *notificationRepository) GetByRecipientID(recipientID uint, limit int) (
 	query := r.db.Preload("Sender").
 		Where("recipient_id = ?", recipientID).
 		Order("created_at DESC")
-	
+
 	if limit > 0 {
 		query = query.Limit(limit)
 	}
-	
+
 	err := query.Find(&notifications).Error
 	return notifications, err
 }
@@ -366,11 +396,11 @@ func (r *emailLogRepository) GetByID(id uint) (*model.EmailLog, error) {
 func (r *emailLogRepository) List(limit int) ([]*model.EmailLog, error) {
 	var logs []*model.EmailLog
 	query := r.db.Preload("Template").Preload("Sender").Order("created_at DESC")
-	
+
 	if limit > 0 {
 		query = query.Limit(limit)
 	}
-	
+
 	err := query.Find(&logs).Error
 	return logs, err
 }
@@ -380,16 +410,16 @@ func (r *emailLogRepository) UpdateStatus(id uint, status string, errorMsg strin
 	updates := map[string]interface{}{
 		"status": status,
 	}
-	
+
 	if status == model.EmailStatusSent {
 		now := time.Now()
 		updates["sent_at"] = &now
 	}
-	
+
 	if errorMsg != "" {
 		updates["error"] = errorMsg
 	}
-	
+
 	return r.db.Model(&model.EmailLog{}).Where("id = ?", id).Updates(updates).Error
 }
 

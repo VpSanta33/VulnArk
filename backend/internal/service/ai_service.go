@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"vulnark/internal/config"
 	"vulnark/internal/model"
 	"vulnark/internal/repository"
+	"vulnark/pkg/outbound"
 )
 
 // AIService AI服务接口
@@ -23,13 +23,14 @@ type AIService interface {
 	SaveAIConfiguration(userID uint, req *model.AIConfigurationRequest) error
 	TestAIConnection(req *model.AITestRequest) error
 	GetSupportedProviders() []model.AIProvider
-	
+
 	// AI对话管理
 	StartConversation(userID uint, title string) (*model.AIConversation, error)
 	SendMessage(userID uint, req *model.AIChatRequest) (*model.AIChatResponse, error)
+	SendMessageContext(ctx context.Context, userID uint, req *model.AIChatRequest) (*model.AIChatResponse, error)
 	GetConversations(userID uint, page, pageSize int) ([]model.AIConversation, int64, error)
 	DeleteConversation(userID uint, sessionID string) error
-	
+
 	// AI使用统计
 	GetUsageStats(userID uint) (*model.AIUsageStats, error)
 }
@@ -38,13 +39,21 @@ type AIService interface {
 type aiService struct {
 	aiRepo repository.AIRepository
 	config *config.Config
+	client *http.Client
+	policy outbound.Policy
 }
 
 // NewAIService 创建AI服务
 func NewAIService(aiRepo repository.AIRepository) AIService {
+	policy := outbound.Policy{}
+	if config.AppConfig != nil {
+		policy.PrivateOrigins = config.AppConfig.Security.OutboundPrivateOrigins
+	}
 	return &aiService{
 		aiRepo: aiRepo,
 		config: config.AppConfig,
+		policy: policy,
+		client: outbound.NewClient(0, policy),
 	}
 }
 
@@ -67,7 +76,27 @@ func (s *aiService) SaveAIConfiguration(userID uint, req *model.AIConfigurationR
 	if !validProvider {
 		return errors.New("不支持的AI提供商")
 	}
-	
+	if req.APIURL != "" {
+		if err := s.policy.ValidateURL(req.APIURL); err != nil {
+			return err
+		}
+	}
+	if req.ClearAPIKey && req.APIKey != "" {
+		return errors.New("不能同时更换和删除API密钥")
+	}
+	if req.Enabled && req.ClearAPIKey {
+		return errors.New("删除API密钥前请先停用AI助手")
+	}
+	if req.Enabled && req.APIKey == "" {
+		saved, err := s.aiRepo.GetAIConfiguration(userID)
+		if err != nil {
+			return err
+		}
+		if saved == nil || saved.APIKey == "" {
+			return errors.New("启用AI助手时必须提供API密钥")
+		}
+	}
+
 	// 设置默认值
 	if req.MaxTokens <= 0 {
 		req.MaxTokens = 2000
@@ -75,10 +104,8 @@ func (s *aiService) SaveAIConfiguration(userID uint, req *model.AIConfigurationR
 	if req.Temperature < 0 || req.Temperature > 2 {
 		req.Temperature = 0.7
 	}
-	if req.Timeout <= 0 {
-		req.Timeout = 30
-	}
-	
+	req.Timeout = int(aiRequestTimeout(req.Timeout) / time.Second)
+
 	return s.aiRepo.UpdateAIConfiguration(userID, req)
 }
 
@@ -87,7 +114,7 @@ func (s *aiService) TestAIConnection(req *model.AITestRequest) error {
 	if req.APIKey == "" {
 		return errors.New("API密钥不能为空")
 	}
-	
+
 	// 获取提供商配置
 	providers := model.GetSupportedProviders()
 	var provider *model.AIProvider
@@ -100,25 +127,25 @@ func (s *aiService) TestAIConnection(req *model.AITestRequest) error {
 	if provider == nil {
 		return errors.New("不支持的AI提供商")
 	}
-	
+
 	// 使用提供的URL或默认URL
 	apiURL := req.APIURL
 	if apiURL == "" {
 		apiURL = provider.APIURL
 	}
-	
+
 	// 使用提供的模型或默认模型
 	model := req.Model
 	if model == "" {
 		model = provider.DefaultModel
 	}
-	
+
 	// 构建测试消息
 	testMessage := req.TestMessage
 	if testMessage == "" {
 		testMessage = "Hello, this is a connection test."
 	}
-	
+
 	// 发送测试请求
 	return s.sendTestRequest(apiURL, req.APIKey, model, testMessage, req.Provider)
 }
@@ -127,11 +154,11 @@ func (s *aiService) TestAIConnection(req *model.AITestRequest) error {
 func (s *aiService) sendTestRequest(apiURL, apiKey, model, message, provider string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	
+
 	// 构建请求体
 	var requestBody interface{}
 	var endpoint string
-	
+
 	switch provider {
 	case "openai", "deepseek":
 		endpoint = "/chat/completions"
@@ -164,18 +191,18 @@ func (s *aiService) sendTestRequest(apiURL, apiKey, model, message, provider str
 			"max_tokens": 10,
 		}
 	}
-	
+
 	jsonData, err := json.Marshal(requestBody)
 	if err != nil {
 		return fmt.Errorf("构建请求失败: %v", err)
 	}
-	
+
 	// 创建HTTP请求
 	req, err := http.NewRequestWithContext(ctx, "POST", apiURL+endpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("创建请求失败: %v", err)
 	}
-	
+
 	// 设置请求头
 	req.Header.Set("Content-Type", "application/json")
 	if provider == "qwen" {
@@ -183,21 +210,23 @@ func (s *aiService) sendTestRequest(apiURL, apiKey, model, message, provider str
 	} else {
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
-	
+
 	// 发送请求
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("请求失败: %v", err)
 	}
 	defer resp.Body.Close()
-	
+
+	body, err := outbound.ReadBody(resp.Body, 4<<20)
+	if err != nil {
+		return err
+	}
 	// 检查响应状态
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("API请求失败 (状态码: %d): %s", resp.StatusCode, string(body))
 	}
-	
+
 	return nil
 }
 
@@ -214,8 +243,27 @@ func (s *aiService) StartConversation(userID uint, title string) (*model.AIConve
 	return s.aiRepo.CreateConversation(userID, title)
 }
 
-// SendMessage 发送消息
+const maxAIRequestTimeout = 120 * time.Second
+
+func aiRequestTimeout(seconds int) time.Duration {
+	if seconds <= 0 {
+		return 30 * time.Second
+	}
+	if seconds > int(maxAIRequestTimeout/time.Second) {
+		return maxAIRequestTimeout
+	}
+	return time.Duration(seconds) * time.Second
+}
+
 func (s *aiService) SendMessage(userID uint, req *model.AIChatRequest) (*model.AIChatResponse, error) {
+	return s.SendMessageContext(context.Background(), userID, req)
+}
+
+// SendMessageContext holds a DB lease, never a DB transaction, during provider I/O.
+func (s *aiService) SendMessageContext(ctx context.Context, userID uint, req *model.AIChatRequest) (*model.AIChatResponse, error) {
+	if userID == 0 || req == nil || strings.TrimSpace(req.Message) == "" {
+		return nil, errors.New("无效的AI消息请求")
+	}
 	// 获取用户AI配置
 	config, err := s.aiRepo.GetAIConfiguration(userID)
 	if err != nil {
@@ -225,13 +273,13 @@ func (s *aiService) SendMessage(userID uint, req *model.AIChatRequest) (*model.A
 	if config == nil || !config.Enabled {
 		return nil, errors.New("AI助手未配置或未启用，请先在设置中配置AI助手")
 	}
-	
+
 	// 获取或创建对话
 	var conversation *model.AIConversation
 	if req.SessionID != "" {
 		conversation, err = s.aiRepo.GetConversation(userID, req.SessionID)
 		if err != nil {
-			return nil, fmt.Errorf("获取对话失败: %v", err)
+			return nil, fmt.Errorf("获取对话失败: %w", err)
 		}
 	} else {
 		// 创建新对话
@@ -240,7 +288,19 @@ func (s *aiService) SendMessage(userID uint, req *model.AIChatRequest) (*model.A
 			return nil, fmt.Errorf("创建对话失败: %v", err)
 		}
 	}
-	
+
+	conversation, err = s.aiRepo.AcquireConversation(ctx, userID, conversation.SessionID, aiRequestTimeout(config.Timeout)+15*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		// Request cancellation must not prevent best-effort release. Expiry also
+		// recovers the lease if the process exits or this update fails.
+		releaseCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = s.aiRepo.ReleaseConversation(releaseCtx, userID, conversation.SessionID, conversation.LeaseToken, conversation.Version)
+	}()
+
 	// 解析现有消息
 	var messages []model.AIMessage
 	if conversation.Messages != "" && conversation.Messages != "[]" {
@@ -249,7 +309,7 @@ func (s *aiService) SendMessage(userID uint, req *model.AIChatRequest) (*model.A
 			return nil, fmt.Errorf("解析对话消息失败: %v", err)
 		}
 	}
-	
+
 	// 添加用户消息
 	userMessage := model.AIMessage{
 		Role:      "user",
@@ -257,13 +317,13 @@ func (s *aiService) SendMessage(userID uint, req *model.AIChatRequest) (*model.A
 		Timestamp: time.Now(),
 	}
 	messages = append(messages, userMessage)
-	
+
 	// 调用AI API
-	aiResponse, tokensUsed, err := s.callAIAPI(config, messages, req.Context)
+	aiResponse, tokensUsed, err := s.callAIAPI(ctx, config, messages, req.Context)
 	if err != nil {
 		return nil, fmt.Errorf("AI API调用失败: %v", err)
 	}
-	
+
 	// 添加AI响应
 	aiMessage := model.AIMessage{
 		Role:      "assistant",
@@ -272,17 +332,16 @@ func (s *aiService) SendMessage(userID uint, req *model.AIChatRequest) (*model.A
 		Tokens:    tokensUsed,
 	}
 	messages = append(messages, aiMessage)
-	
+
 	// 更新对话
-	totalTokens := conversation.TokensUsed + tokensUsed
-	err = s.aiRepo.UpdateConversation(conversation.SessionID, messages, totalTokens)
+	err = s.aiRepo.CommitConversation(ctx, userID, conversation.SessionID, conversation.LeaseToken, conversation.Version, messages, tokensUsed)
 	if err != nil {
-		return nil, fmt.Errorf("更新对话失败: %v", err)
+		return nil, fmt.Errorf("更新对话失败: %w", err)
 	}
-	
+
 	// 生成建议问题
 	suggestions := s.generateSuggestions(req.Context)
-	
+
 	return &model.AIChatResponse{
 		SessionID:   conversation.SessionID,
 		Message:     aiResponse,
@@ -292,29 +351,29 @@ func (s *aiService) SendMessage(userID uint, req *model.AIChatRequest) (*model.A
 }
 
 // callAIAPI 调用AI API
-func (s *aiService) callAIAPI(config *model.AIConfiguration, messages []model.AIMessage, contextInfo string) (string, int, error) {
+func (s *aiService) callAIAPI(parent context.Context, config *model.AIConfiguration, messages []model.AIMessage, contextInfo string) (string, int, error) {
 	// 构建系统消息
 	systemMessage := s.buildSystemMessage(contextInfo)
-	
+
 	// 构建API消息格式
 	apiMessages := []map[string]string{
 		{"role": "system", "content": systemMessage},
 	}
-	
+
 	// 添加历史消息（限制数量以控制token使用）
 	maxHistoryMessages := 10
 	startIdx := 0
 	if len(messages) > maxHistoryMessages {
 		startIdx = len(messages) - maxHistoryMessages
 	}
-	
+
 	for i := startIdx; i < len(messages); i++ {
 		apiMessages = append(apiMessages, map[string]string{
 			"role":    messages[i].Role,
 			"content": messages[i].Content,
 		})
 	}
-	
+
 	// 构建请求
 	requestBody := map[string]interface{}{
 		"model":       config.Model,
@@ -322,16 +381,16 @@ func (s *aiService) callAIAPI(config *model.AIConfiguration, messages []model.AI
 		"max_tokens":  config.MaxTokens,
 		"temperature": config.Temperature,
 	}
-	
+
 	jsonData, err := json.Marshal(requestBody)
 	if err != nil {
 		return "", 0, err
 	}
-	
+
 	// 发送请求
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.Timeout)*time.Second)
+	ctx, cancel := context.WithTimeout(parent, aiRequestTimeout(config.Timeout))
 	defer cancel()
-	
+
 	apiURL := config.APIURL
 	if apiURL == "" {
 		// 使用默认URL
@@ -343,27 +402,29 @@ func (s *aiService) callAIAPI(config *model.AIConfiguration, messages []model.AI
 			}
 		}
 	}
-	
+
 	req, err := http.NewRequestWithContext(ctx, "POST", apiURL+"/chat/completions", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", 0, err
 	}
-	
+
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+config.APIKey)
-	
-	client := &http.Client{Timeout: time.Duration(config.Timeout) * time.Second}
-	resp, err := client.Do(req)
+
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return "", 0, err
 	}
 	defer resp.Body.Close()
-	
+
+	body, err := outbound.ReadBody(resp.Body, 4<<20)
+	if err != nil {
+		return "", 0, err
+	}
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
 		return "", 0, fmt.Errorf("API请求失败 (状态码: %d): %s", resp.StatusCode, string(body))
 	}
-	
+
 	// 解析响应
 	var response struct {
 		Choices []struct {
@@ -375,16 +436,16 @@ func (s *aiService) callAIAPI(config *model.AIConfiguration, messages []model.AI
 			TotalTokens int `json:"total_tokens"`
 		} `json:"usage"`
 	}
-	
-	err = json.NewDecoder(resp.Body).Decode(&response)
+
+	err = json.Unmarshal(body, &response)
 	if err != nil {
 		return "", 0, err
 	}
-	
+
 	if len(response.Choices) == 0 {
 		return "", 0, errors.New("AI响应为空")
 	}
-	
+
 	return response.Choices[0].Message.Content, response.Usage.TotalTokens, nil
 }
 
@@ -414,7 +475,7 @@ func (s *aiService) generateSuggestions(context string) []string {
 		"如何设置系统语言？",
 		"系统性能优化建议？",
 	}
-	
+
 	// 根据上下文调整建议
 	if strings.Contains(context, "配置") {
 		suggestions = []string{
@@ -423,7 +484,7 @@ func (s *aiService) generateSuggestions(context string) []string {
 			"如何备份当前配置？",
 		}
 	}
-	
+
 	return suggestions
 }
 

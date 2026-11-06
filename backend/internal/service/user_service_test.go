@@ -35,7 +35,8 @@ func TestUserService_GetUserByID(t *testing.T) {
 
 		// 验证结果
 		require.NoError(t, err)
-		assert.Equal(t, expectedUser, user)
+		expectedInfo := expectedUser.ToUserInfo()
+		assert.Equal(t, &expectedInfo, user)
 		mockUserRepo.AssertExpectations(t)
 	})
 
@@ -51,6 +52,16 @@ func TestUserService_GetUserByID(t *testing.T) {
 		assert.Nil(t, user)
 		mockUserRepo.AssertExpectations(t)
 	})
+}
+
+func TestRoleMetadataUpdateDoesNotWritePermissionSnapshot(t *testing.T) {
+	repo := new(mocks.MockRoleRepository)
+	repo.On("GetByID", uint(7)).Return(&model.Role{ID: 7, Name: "operator", Permissions: model.Permissions{"*"}}, nil)
+	repo.On("Update", mock.MatchedBy(func(role *model.Role) bool {
+		return role.ID == 7 && role.Description == "metadata only" && role.Name == "" && role.Permissions == nil
+	})).Return(nil)
+	require.NoError(t, NewRoleService(repo).UpdateRole(7, &model.RoleUpdateRequest{Description: "metadata only"}))
+	repo.AssertExpectations(t)
 }
 
 func TestUserService_CreateUser(t *testing.T) {
@@ -74,11 +85,11 @@ func TestUserService_CreateUser(t *testing.T) {
 		// 设置Mock期望
 		mockUserRepo.On("GetByUsername", "newuser").Return(nil, errors.New("record not found"))
 		mockUserRepo.On("GetByEmail", "newuser@example.com").Return(nil, errors.New("record not found"))
-		
+
 		// 检查角色是否存在
 		expectedRole := &model.Role{ID: 1, Name: "测试角色"}
 		mockRoleRepo.On("GetByID", uint(1)).Return(expectedRole, nil)
-		
+
 		// 创建用户
 		mockUserRepo.On("Create", mock.AnythingOfType("*model.User")).Return(nil)
 

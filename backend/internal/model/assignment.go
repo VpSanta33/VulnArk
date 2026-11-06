@@ -9,14 +9,14 @@ import (
 
 // VulnerabilityAssignment 漏洞分配记录模型
 type VulnerabilityAssignment struct {
-	ID                uint      `json:"id" gorm:"primarykey"`
-	CreatedAt         time.Time `json:"created_at"`
-	VulnerabilityID   uint      `json:"vulnerability_id" gorm:"not null"`
-	AssigneeID        uint      `json:"assignee_id" gorm:"not null"`
-	AssignerID        uint      `json:"assigner_id" gorm:"not null"`
-	AssignmentType    string    `json:"assignment_type" gorm:"size:20;default:manual"` // manual, auto
-	AssignmentReason  string    `json:"assignment_reason" gorm:"type:text"`
-	AssignedAt        time.Time `json:"assigned_at" gorm:"default:CURRENT_TIMESTAMP"`
+	ID               uint      `json:"id" gorm:"primarykey"`
+	CreatedAt        time.Time `json:"created_at"`
+	VulnerabilityID  uint      `json:"vulnerability_id" gorm:"not null"`
+	AssigneeID       uint      `json:"assignee_id" gorm:"not null"`
+	AssignerID       uint      `json:"assigner_id" gorm:"not null"`
+	AssignmentType   string    `json:"assignment_type" gorm:"size:20;default:manual"` // manual, auto
+	AssignmentReason string    `json:"assignment_reason" gorm:"type:text"`
+	AssignedAt       time.Time `json:"assigned_at" gorm:"type:datetime;default:CURRENT_TIMESTAMP"`
 
 	// 关联
 	Vulnerability Vulnerability `json:"vulnerability" gorm:"foreignKey:VulnerabilityID"`
@@ -31,15 +31,15 @@ func (VulnerabilityAssignment) TableName() string {
 
 // AssignmentRule 分配规则模型
 type AssignmentRule struct {
-	ID         uint                   `json:"id" gorm:"primarykey"`
-	CreatedAt  time.Time              `json:"created_at"`
-	UpdatedAt  time.Time              `json:"updated_at"`
-	Name       string                 `json:"name" gorm:"size:100;not null"`
-	RuleType   string                 `json:"rule_type" gorm:"size:50;not null"` // asset_type, severity, department, owasp_category
-	Conditions AssignmentConditions   `json:"conditions" gorm:"type:json;not null"`
-	AssigneeID uint                   `json:"assignee_id" gorm:"not null"`
-	Priority   int                    `json:"priority" gorm:"default:0"`
-	IsActive   bool                   `json:"is_active" gorm:"default:true"`
+	ID         uint                 `json:"id" gorm:"primarykey"`
+	CreatedAt  time.Time            `json:"created_at"`
+	UpdatedAt  time.Time            `json:"updated_at"`
+	Name       string               `json:"name" gorm:"size:100;not null"`
+	RuleType   string               `json:"rule_type" gorm:"size:50;not null"` // asset_type, severity, department, owasp_category
+	Conditions AssignmentConditions `json:"conditions" gorm:"type:json;not null"`
+	AssigneeID uint                 `json:"assignee_id" gorm:"not null"`
+	Priority   int                  `json:"priority" gorm:"default:0"`
+	IsActive   bool                 `json:"is_active" gorm:"default:true"`
 
 	// 关联
 	Assignee User `json:"assignee" gorm:"foreignKey:AssigneeID"`
@@ -63,17 +63,19 @@ func (c AssignmentConditions) Value() (driver.Value, error) {
 
 // Scan 实现 sql.Scanner 接口
 func (c *AssignmentConditions) Scan(value interface{}) error {
-	if value == nil {
+	var data []byte
+	switch value := value.(type) {
+	case nil:
 		*c = AssignmentConditions{}
 		return nil
+	case []byte:
+		data = value
+	case string:
+		data = []byte(value)
+	default:
+		return errors.New("分配条件必须为string或[]byte")
 	}
-	
-	bytes, ok := value.([]byte)
-	if !ok {
-		return errors.New("无法将值转换为[]byte")
-	}
-	
-	return json.Unmarshal(bytes, c)
+	return json.Unmarshal(data, c)
 }
 
 // VulnerabilityTimeline 漏洞时间线模型
@@ -156,25 +158,25 @@ type TimelineEntry struct {
 
 // AssignmentStats 分配统计
 type AssignmentStats struct {
-	TotalAssignments    int64                    `json:"total_assignments"`
-	AutoAssignments     int64                    `json:"auto_assignments"`
-	ManualAssignments   int64                    `json:"manual_assignments"`
-	ByAssignee          map[string]int64         `json:"by_assignee"`
-	ByRuleType          map[string]int64         `json:"by_rule_type"`
-	RecentAssignments   []AssignmentHistoryItem  `json:"recent_assignments"`
+	TotalAssignments  int64                   `json:"total_assignments"`
+	AutoAssignments   int64                   `json:"auto_assignments"`
+	ManualAssignments int64                   `json:"manual_assignments"`
+	ByAssignee        map[string]int64        `json:"by_assignee"`
+	ByRuleType        map[string]int64        `json:"by_rule_type"`
+	RecentAssignments []AssignmentHistoryItem `json:"recent_assignments"`
 }
 
 // AssignmentHistoryItem 分配历史项
 type AssignmentHistoryItem struct {
-	ID               uint      `json:"id"`
-	VulnerabilityID  uint      `json:"vulnerability_id"`
-	VulnerabilityTitle string  `json:"vulnerability_title"`
-	AssigneeID       uint      `json:"assignee_id"`
-	AssigneeName     string    `json:"assignee_name"`
-	AssignerID       uint      `json:"assigner_id"`
-	AssignerName     string    `json:"assigner_name"`
-	AssignmentType   string    `json:"assignment_type"`
-	AssignedAt       time.Time `json:"assigned_at"`
+	ID                 uint      `json:"id"`
+	VulnerabilityID    uint      `json:"vulnerability_id"`
+	VulnerabilityTitle string    `json:"vulnerability_title"`
+	AssigneeID         uint      `json:"assignee_id"`
+	AssigneeName       string    `json:"assignee_name"`
+	AssignerID         uint      `json:"assigner_id"`
+	AssignerName       string    `json:"assigner_name"`
+	AssignmentType     string    `json:"assignment_type"`
+	AssignedAt         time.Time `json:"assigned_at"`
 }
 
 // 分配类型常量
@@ -199,4 +201,5 @@ const (
 	TimelineActionUpdated       = "updated"
 	TimelineActionCommented     = "commented"
 	TimelineActionReassigned    = "reassigned"
+	TimelineActionRetested      = "retested"
 )

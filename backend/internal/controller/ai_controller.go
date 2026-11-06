@@ -1,12 +1,15 @@
 package controller
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"vulnark/internal/model"
+	"vulnark/internal/repository"
 	"vulnark/internal/service"
 	"vulnark/pkg/utils"
 )
@@ -30,14 +33,14 @@ func NewAIController(aiService service.AIService) *AIController {
 // @Accept json
 // @Produce json
 // @Security ApiKeyAuth
-// @Success 200 {object} response.Response{data=model.AIConfiguration}
-// @Failure 400 {object} response.Response
-// @Failure 401 {object} response.Response
-// @Failure 500 {object} response.Response
+// @Success 200 {object} model.Response{data=model.AIConfiguration}
+// @Failure 400 {object} model.Response
+// @Failure 401 {object} model.Response
+// @Failure 500 {object} model.Response
 // @Router /api/v1/ai/config [get]
 func (c *AIController) GetAIConfiguration(ctx *gin.Context) {
 	userID := getUserID(ctx)
-	
+
 	config, err := c.aiService.GetAIConfiguration(userID)
 	if err != nil {
 		utils.ErrorResponse(ctx, http.StatusInternalServerError, "获取AI配置失败")
@@ -57,6 +60,7 @@ func (c *AIController) GetAIConfiguration(ctx *gin.Context) {
 	}
 
 	// 隐藏API密钥
+	config.HasAPIKey = config.APIKey != ""
 	config.APIKey = ""
 
 	utils.SuccessResponse(ctx, config)
@@ -70,14 +74,14 @@ func (c *AIController) GetAIConfiguration(ctx *gin.Context) {
 // @Produce json
 // @Security ApiKeyAuth
 // @Param config body model.AIConfigurationRequest true "AI配置"
-// @Success 200 {object} response.Response
-// @Failure 400 {object} response.Response
-// @Failure 401 {object} response.Response
-// @Failure 500 {object} response.Response
+// @Success 200 {object} model.Response
+// @Failure 400 {object} model.Response
+// @Failure 401 {object} model.Response
+// @Failure 500 {object} model.Response
 // @Router /api/v1/ai/config [post]
 func (c *AIController) SaveAIConfiguration(ctx *gin.Context) {
 	userID := getUserID(ctx)
-	
+
 	var req model.AIConfigurationRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		utils.BadRequestResponse(ctx, "请求参数错误")
@@ -101,10 +105,10 @@ func (c *AIController) SaveAIConfiguration(ctx *gin.Context) {
 // @Produce json
 // @Security ApiKeyAuth
 // @Param test body model.AITestRequest true "测试请求"
-// @Success 200 {object} response.Response
-// @Failure 400 {object} response.Response
-// @Failure 401 {object} response.Response
-// @Failure 500 {object} response.Response
+// @Success 200 {object} model.Response
+// @Failure 400 {object} model.Response
+// @Failure 401 {object} model.Response
+// @Failure 500 {object} model.Response
 // @Router /api/v1/ai/test [post]
 func (c *AIController) TestAIConnection(ctx *gin.Context) {
 	var req model.AITestRequest
@@ -128,7 +132,9 @@ func (c *AIController) TestAIConnection(ctx *gin.Context) {
 // @Tags AI
 // @Accept json
 // @Produce json
-// @Success 200 {object} response.Response{data=[]model.AIProvider}
+// @Security ApiKeyAuth
+// @Success 200 {object} model.Response{data=[]model.AIProvider}
+// @Failure 401 {object} model.Response
 // @Router /api/v1/ai/providers [get]
 func (c *AIController) GetSupportedProviders(ctx *gin.Context) {
 	providers := c.aiService.GetSupportedProviders()
@@ -143,19 +149,19 @@ func (c *AIController) GetSupportedProviders(ctx *gin.Context) {
 // @Produce json
 // @Security ApiKeyAuth
 // @Param request body object{title=string} false "对话标题"
-// @Success 200 {object} response.Response{data=model.AIConversation}
-// @Failure 400 {object} response.Response
-// @Failure 401 {object} response.Response
-// @Failure 500 {object} response.Response
+// @Success 200 {object} model.Response{data=model.AIConversation}
+// @Failure 400 {object} model.Response
+// @Failure 401 {object} model.Response
+// @Failure 500 {object} model.Response
 // @Router /api/v1/ai/conversation [post]
 func (c *AIController) StartConversation(ctx *gin.Context) {
 	userID := getUserID(ctx)
-	
+
 	var req struct {
 		Title string `json:"title"`
 	}
 	ctx.ShouldBindJSON(&req)
-	
+
 	conversation, err := c.aiService.StartConversation(userID, req.Title)
 	if err != nil {
 		utils.ErrorResponse(ctx, http.StatusInternalServerError, "创建对话失败")
@@ -173,22 +179,31 @@ func (c *AIController) StartConversation(ctx *gin.Context) {
 // @Produce json
 // @Security ApiKeyAuth
 // @Param message body model.AIChatRequest true "聊天请求"
-// @Success 200 {object} response.Response{data=model.AIChatResponse}
-// @Failure 400 {object} response.Response
-// @Failure 401 {object} response.Response
-// @Failure 500 {object} response.Response
+// @Success 200 {object} model.Response{data=model.AIChatResponse}
+// @Failure 400 {object} model.Response
+// @Failure 401 {object} model.Response
+// @Failure 500 {object} model.Response
+// @Failure 409 {object} model.Response "会话忙碌、已关闭或租约失效"
 // @Router /api/v1/ai/chat [post]
 func (c *AIController) SendMessage(ctx *gin.Context) {
 	userID := getUserID(ctx)
-	
+
 	var req model.AIChatRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		utils.BadRequestResponse(ctx, "请求参数错误")
 		return
 	}
 
-	aiResponse, err := c.aiService.SendMessage(userID, &req)
+	aiResponse, err := c.aiService.SendMessageContext(ctx.Request.Context(), userID, &req)
 	if err != nil {
+		if errors.Is(err, repository.ErrAIConversationBusy) || errors.Is(err, repository.ErrAILeaseLost) || errors.Is(err, repository.ErrAIConversationInactive) {
+			utils.ErrorResponse(ctx, http.StatusConflict, err.Error())
+			return
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			utils.NotFoundResponse(ctx, "对话不存在")
+			return
+		}
 		utils.ErrorResponse(ctx, http.StatusInternalServerError, "发送消息失败")
 		return
 	}
@@ -205,24 +220,24 @@ func (c *AIController) SendMessage(ctx *gin.Context) {
 // @Security ApiKeyAuth
 // @Param page query int false "页码" default(1)
 // @Param page_size query int false "每页数量" default(20)
-// @Success 200 {object} response.Response{data=response.PageResponse{items=[]model.AIConversation}}
-// @Failure 400 {object} response.Response
-// @Failure 401 {object} response.Response
-// @Failure 500 {object} response.Response
+// @Success 200 {object} model.Response{data=model.PaginationResponse{data=[]model.AIConversation}}
+// @Failure 400 {object} model.Response
+// @Failure 401 {object} model.Response
+// @Failure 500 {object} model.Response
 // @Router /api/v1/ai/conversations [get]
 func (c *AIController) GetConversations(ctx *gin.Context) {
 	userID := getUserID(ctx)
-	
+
 	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(ctx.DefaultQuery("page_size", "20"))
-	
+
 	if page < 1 {
 		page = 1
 	}
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
-	
+
 	conversations, total, err := c.aiService.GetConversations(userID, page, pageSize)
 	if err != nil {
 		utils.ErrorResponse(ctx, http.StatusInternalServerError, "获取对话列表失败")
@@ -240,15 +255,15 @@ func (c *AIController) GetConversations(ctx *gin.Context) {
 // @Produce json
 // @Security ApiKeyAuth
 // @Param session_id path string true "会话ID"
-// @Success 200 {object} response.Response
-// @Failure 400 {object} response.Response
-// @Failure 401 {object} response.Response
-// @Failure 500 {object} response.Response
+// @Success 200 {object} model.Response
+// @Failure 400 {object} model.Response
+// @Failure 401 {object} model.Response
+// @Failure 500 {object} model.Response
 // @Router /api/v1/ai/conversation/{session_id} [delete]
 func (c *AIController) DeleteConversation(ctx *gin.Context) {
 	userID := getUserID(ctx)
 	sessionID := ctx.Param("session_id")
-	
+
 	if sessionID == "" {
 		utils.BadRequestResponse(ctx, "会话ID不能为空")
 		return
@@ -270,14 +285,14 @@ func (c *AIController) DeleteConversation(ctx *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security ApiKeyAuth
-// @Success 200 {object} response.Response{data=model.AIUsageStats}
-// @Failure 400 {object} response.Response
-// @Failure 401 {object} response.Response
-// @Failure 500 {object} response.Response
+// @Success 200 {object} model.Response{data=model.AIUsageStats}
+// @Failure 400 {object} model.Response
+// @Failure 401 {object} model.Response
+// @Failure 500 {object} model.Response
 // @Router /api/v1/ai/stats [get]
 func (c *AIController) GetUsageStats(ctx *gin.Context) {
 	userID := getUserID(ctx)
-	
+
 	stats, err := c.aiService.GetUsageStats(userID)
 	if err != nil {
 		utils.ErrorResponse(ctx, http.StatusInternalServerError, "获取使用统计失败")
@@ -293,10 +308,10 @@ func getUserID(ctx *gin.Context) uint {
 	if !exists {
 		return 0
 	}
-	
+
 	if id, ok := userID.(uint); ok {
 		return id
 	}
-	
+
 	return 0
 }

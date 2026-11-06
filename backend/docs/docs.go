@@ -9,12 +9,7 @@ const docTemplate = `{
     "info": {
         "description": "{{escape .Description}}",
         "title": "{{.Title}}",
-        "termsOfService": "https://vulnark.com/terms",
-        "contact": {
-            "name": "VulnArk Team",
-            "url": "https://vulnark.com",
-            "email": "support@vulnark.com"
-        },
+        "contact": {},
         "license": {
             "name": "MIT",
             "url": "https://opensource.org/licenses/MIT"
@@ -93,50 +88,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/metrics": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "获取API的性能指标和使用统计",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "API版本管理"
-                ],
-                "summary": "获取API指标",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/model.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "type": "object",
-                                            "additionalProperties": true
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    }
-                }
-            }
-        },
         "/api/status": {
             "get": {
                 "description": "获取API服务的实时状态信息",
@@ -165,6 +116,575 @@ const docTemplate = `{
                                     }
                                 }
                             ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/ai/chat": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "向AI助手发送消息并获取回复",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "发送消息",
+                "parameters": [
+                    {
+                        "description": "聊天请求",
+                        "name": "message",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.AIChatRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.AIChatResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "409": {
+                        "description": "会话忙碌、已关闭或租约失效",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/ai/config": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取当前用户的AI助手配置",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "获取AI配置",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.AIConfiguration"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "保存或更新用户的AI助手配置",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "保存AI配置",
+                "parameters": [
+                    {
+                        "description": "AI配置",
+                        "name": "config",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.AIConfigurationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/ai/conversation": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "创建一个新的AI对话会话",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "开始新对话",
+                "parameters": [
+                    {
+                        "description": "对话标题",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "title": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.AIConversation"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/ai/conversation/{session_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "删除指定的AI对话",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "删除对话",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "会话ID",
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/ai/conversations": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取用户的AI对话历史列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "获取对话列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "allOf": [
+                                                {
+                                                    "$ref": "#/definitions/model.PaginationResponse"
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "data": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "$ref": "#/definitions/model.AIConversation"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/ai/providers": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取系统支持的AI服务提供商列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "获取支持的AI提供商",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/model.AIProvider"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/ai/stats": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取用户的AI助手使用统计信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "获取使用统计",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.AIUsageStats"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/ai/test": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "测试AI服务连接是否正常",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "测试AI连接",
+                "parameters": [
+                    {
+                        "description": "测试请求",
+                        "name": "test",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.AITestRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
                         }
                     }
                 }
@@ -324,13 +844,149 @@ const docTemplate = `{
             }
         },
         "/api/v1/analytics/export": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "按筛选条件即时生成并返回 CSV 文件流，不接受文件路径参数。需要 analytics:read、analytics:export 权限，type=user 额外需要 user:manage 权限。",
+                "produces": [
+                    "text/csv"
+                ],
+                "tags": [
+                    "统计分析"
+                ],
+                "summary": "下载统计CSV",
+                "parameters": [
+                    {
+                        "enum": [
+                            "dashboard",
+                            "vulnerability",
+                            "asset",
+                            "report",
+                            "user"
+                        ],
+                        "type": "string",
+                        "description": "导出类型",
+                        "name": "type",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "csv"
+                        ],
+                        "type": "string",
+                        "default": "csv",
+                        "description": "当前仅支持 csv",
+                        "name": "format",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "开始日期 (YYYY-MM-DD)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "结束日期 (YYYY-MM-DD)",
+                        "name": "end_date",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "day",
+                            "week",
+                            "month"
+                        ],
+                        "type": "string",
+                        "description": "时间粒度",
+                        "name": "granularity",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "资产ID",
+                        "name": "asset_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "用户ID",
+                        "name": "user_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "严重程度",
+                        "name": "severity",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "状态",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "分类",
+                        "name": "category",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "CSV 文件流",
+                        "schema": {
+                            "type": "file"
+                        },
+                        "headers": {
+                            "Cache-Control": {
+                                "type": "string",
+                                "description": "no-store"
+                            },
+                            "Content-Disposition": {
+                                "type": "string",
+                                "description": "attachment; filename=导出文件名.csv"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
             "post": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "导出统计分析数据为指定格式",
+                "description": "创建统计 CSV 并返回 file_name、file_url、file_size，其中 file_url 是携带相同筛选条件的鉴权 GET 下载链接，下载时仍须提供 Authorization: Bearer 访问令牌。当前仅实现 csv，excel、pdf 请求返回 400。请求字段 type、format 必填，start_date、end_date 可选；filters 支持 asset_id、user_id、severity、status、category、granularity。需要 analytics:read、analytics:export 权限，type=user 额外需要 user:manage 权限。",
                 "consumes": [
                     "application/json"
                 ],
@@ -646,6 +1302,52 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/analytics/vulnerability/monthly-trends": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取最近6个月的漏洞发现和解决趋势数据",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "统计分析"
+                ],
+                "summary": "获取月度漏洞趋势",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/model.MonthlyTrendPoint"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/analytics/vulnerability/severity-trend": {
             "get": {
                 "security": [
@@ -775,7 +1477,12 @@ const docTemplate = `{
         },
         "/api/v1/api-test/docs": {
             "get": {
-                "description": "获取系统API文档的基本信息和访问地址",
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取系统API文档的基本信息和访问地址；需要 api:test 权限。",
                 "produces": [
                     "application/json"
                 ],
@@ -801,6 +1508,18 @@ const docTemplate = `{
                                     }
                                 }
                             ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
                         }
                     }
                 }
@@ -2312,6 +3031,11 @@ const docTemplate = `{
         },
         "/api/v1/knowledge/popular": {
             "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "获取热门知识库列表",
                 "produces": [
                     "application/json"
@@ -2362,6 +3086,11 @@ const docTemplate = `{
         },
         "/api/v1/knowledge/recent": {
             "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "获取最新知识库列表",
                 "produces": [
                     "application/json"
@@ -2412,6 +3141,11 @@ const docTemplate = `{
         },
         "/api/v1/knowledge/search": {
             "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "搜索知识库内容",
                 "produces": [
                     "application/json"
@@ -2772,6 +3506,11 @@ const docTemplate = `{
         },
         "/api/v1/knowledge/{id}/related": {
             "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "获取与指定知识库相关的其他知识库",
                 "produces": [
                     "application/json"
@@ -2829,7 +3568,7 @@ const docTemplate = `{
         },
         "/api/v1/login": {
             "post": {
-                "description": "用户登录接口",
+                "description": "使用 username、password 登录；启用 MFA 时首次返回 mfa_required、challenge_token，随后携带相同凭据、challenge_token 及 totp_code 或 recovery_code 完成登录。需要重新绑定 MFA 时返回 mfa_rebind_required、rebind_token，该令牌仅用于 2FA setup、verify、status；重新绑定完成后须重新登录获取访问令牌。",
                 "consumes": [
                     "application/json"
                 ],
@@ -2872,6 +3611,87 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/logout": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "撤销当前用户已签发的全部访问令牌与 MFA 重绑定令牌；/logout 和 /revoke-all 执行相同操作，成功后须重新登录。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户管理"
+                ],
+                "summary": "退出所有会话",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/metrics": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取API的性能指标和使用统计",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "API版本管理"
+                ],
+                "summary": "获取API指标",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -3885,7 +4705,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/model.UserUpdateRequest"
+                            "$ref": "#/definitions/model.UserProfileUpdateRequest"
                         }
                     }
                 ],
@@ -3905,16 +4725,49 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/public/configs": {
+        "/api/v1/public/client-config": {
             "get": {
-                "description": "获取可公开访问的系统配置",
+                "description": "获取前端需要的配置信息",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "系统管理"
                 ],
-                "summary": "获取公开配置列表",
+                "summary": "获取客户端配置信息",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/public/configs": {
+            "get": {
+                "description": "获取可以公开访问的系统配置信息",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "系统管理"
+                ],
+                "summary": "获取公开系统配置",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -3936,26 +4789,20 @@ const docTemplate = `{
                                 }
                             ]
                         }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
                     }
                 }
             }
         },
         "/api/v1/public/system/info": {
             "get": {
-                "description": "获取系统基本信息",
+                "description": "获取系统版本、状态等基本信息",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "系统管理"
                 ],
-                "summary": "获取系统信息",
+                "summary": "获取系统基本信息",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -4427,6 +5274,53 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/reports/{id}/content": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "根据ID获取报告的具体内容（用于预览）",
+                "produces": [
+                    "text/html",
+                    "text/plain"
+                ],
+                "tags": [
+                    "报告管理"
+                ],
+                "summary": "获取报告内容",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "报告ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "报告内容",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/reports/{id}/download": {
             "get": {
                 "security": [
@@ -4434,14 +5328,88 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "获取报告下载链接",
+                "description": "经鉴权直接返回报告原始文件流（PDF、DOC 或 DOCX），Content-Disposition 为 attachment，支持 Range 请求；不返回 JSON 或公共静态地址。需要 report:read 权限。",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "报告管理"
+                ],
+                "summary": "下载报告",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "报告ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "报告原始文件流",
+                        "schema": {
+                            "type": "file"
+                        },
+                        "headers": {
+                            "Cache-Control": {
+                                "type": "string",
+                                "description": "private, no-store"
+                            },
+                            "Content-Disposition": {
+                                "type": "string",
+                                "description": "attachment; filename=报告文件名"
+                            }
+                        }
+                    },
+                    "206": {
+                        "description": "Range 请求的部分报告内容",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/reports/{id}/download-url": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "返回 data.download_url，格式为 /api/v1/reports/{id}/download；该地址仍需 Authorization: Bearer 访问令牌，并通过报告下载 API 返回文件流，不是公开文件链接。需要 report:read 权限。",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "报告管理"
                 ],
-                "summary": "下载报告",
+                "summary": "查询报告下载地址",
                 "parameters": [
                     {
                         "type": "integer",
@@ -4464,8 +5432,10 @@ const docTemplate = `{
                                     "properties": {
                                         "data": {
                                             "type": "object",
-                                            "additionalProperties": {
-                                                "type": "string"
+                                            "properties": {
+                                                "download_url": {
+                                                    "type": "string"
+                                                }
                                             }
                                         }
                                     }
@@ -4475,6 +5445,24 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -4574,41 +5562,32 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/roles": {
-            "get": {
+        "/api/v1/revoke-all": {
+            "post": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "获取所有角色列表",
+                "description": "撤销当前用户已签发的全部访问令牌与 MFA 重绑定令牌；/logout 和 /revoke-all 执行相同操作，成功后须重新登录。",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "角色管理"
+                    "用户管理"
                 ],
-                "summary": "获取角色列表",
+                "summary": "退出所有会话",
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/model.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "type": "array",
-                                            "items": {
-                                                "$ref": "#/definitions/model.Role"
-                                            }
-                                        }
-                                    }
-                                }
-                            ]
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
                         }
                     },
                     "500": {
@@ -4618,204 +5597,9 @@ const docTemplate = `{
                         }
                     }
                 }
-            },
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "管理员创建新角色",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "角色管理"
-                ],
-                "summary": "创建角色",
-                "parameters": [
-                    {
-                        "description": "创建角色请求",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/model.RoleCreateRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/model.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.Role"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    }
-                }
             }
         },
-        "/api/v1/roles/{id}": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "根据ID获取角色详情",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "角色管理"
-                ],
-                "summary": "获取角色详情",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "角色ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/model.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/model.Role"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    }
-                }
-            },
-            "put": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "管理员更新角色信息",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "角色管理"
-                ],
-                "summary": "更新角色",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "角色ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "更新请求",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/model.RoleUpdateRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "管理员删除角色",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "角色管理"
-                ],
-                "summary": "删除角色",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "角色ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/model.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/roles/{role_id}/permissions": {
+        "/api/v1/role-permissions/{role_id}": {
             "get": {
                 "security": [
                     {
@@ -4920,6 +5704,1357 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/roles": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取所有角色列表",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "角色管理"
+                ],
+                "summary": "获取角色列表",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/model.Role"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "创建角色需要 role:manage 权限；请求包含 permissions 权限配置时额外需要 system:permission 权限。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "角色管理"
+                ],
+                "summary": "创建角色",
+                "parameters": [
+                    {
+                        "description": "创建角色请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.RoleCreateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.Role"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/roles/options": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取可用于用户创建的角色选项列表",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "角色管理"
+                ],
+                "summary": "获取角色选项",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "description": {
+                                                        "type": "string"
+                                                    },
+                                                    "label": {
+                                                        "type": "string"
+                                                    },
+                                                    "value": {
+                                                        "type": "integer"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/roles/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "根据ID获取角色详情",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "角色管理"
+                ],
+                "summary": "获取角色详情",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "角色ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.Role"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "更新角色需要 role:manage 权限；请求包含 permissions 权限配置时额外需要 system:permission 权限。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "角色管理"
+                ],
+                "summary": "更新角色",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "角色ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.RoleUpdateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "管理员删除角色",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "角色管理"
+                ],
+                "summary": "删除角色",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "角色ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/settings/2fa": {
+            "delete": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "使用当前 TOTP 或未使用的恢复码（code 字段）禁用当前用户 MFA。须使用 Bearer 访问令牌；成功后当前用户所有会话失效，须重新登录。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "设置管理"
+                ],
+                "summary": "禁用双因素认证",
+                "parameters": [
+                    {
+                        "description": "必填 code：当前 TOTP 或恢复码",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "code": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/settings/2fa/setup": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "创建待验证的 TOTP 绑定，返回 qr_code_url、qr_code_data_url、otpauth_url、secret、expires_at；这些数据仅用于当前用户绑定认证器。Authorization 使用 Bearer 访问令牌或登录返回的 rebind_token。设置后须在有效期内调用 verify，当前步骤不会启用 MFA。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "设置管理"
+                ],
+                "summary": "设置双因素认证",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.TwoFactorSetupResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/settings/2fa/status": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "返回 enabled、pending、needs_rebind、recovery_codes_remaining，不返回已保存的 MFA 秘密或恢复码。Authorization 使用 Bearer 访问令牌或登录返回的 rebind_token。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "设置管理"
+                ],
+                "summary": "获取双因素认证状态",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.TwoFactorStatusResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/settings/2fa/verify": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "使用 setup 后认证器生成的 6 位 code 完成绑定并启用 MFA；Authorization 使用 Bearer 访问令牌或 rebind_token。成功仅此次返回 recovery_codes 数组，请妥善保存；现有访问令牌与重绑定令牌失效，须重新登录。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "设置管理"
+                ],
+                "summary": "验证双因素认证",
+                "parameters": [
+                    {
+                        "description": "2FA验证请求：code 为 6 位 TOTP",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.TwoFactorVerifyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "recovery_codes": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/settings/cache/clear": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "清理用户相关缓存",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "设置管理"
+                ],
+                "summary": "清理缓存",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/settings/database/optimize": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "执行数据库优化操作",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "设置管理"
+                ],
+                "summary": "优化数据库",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/settings/export": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "导出用户数据",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "设置管理"
+                ],
+                "summary": "导出数据",
+                "parameters": [
+                    {
+                        "enum": [
+                            "profile",
+                            "settings",
+                            "all"
+                        ],
+                        "type": "string",
+                        "description": "数据类型",
+                        "name": "type",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/settings/import": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "导入用户数据",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "设置管理"
+                ],
+                "summary": "导入数据",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "数据文件",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "数据类型",
+                        "name": "type",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/settings/notifications": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取当前用户的通知设置",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "设置管理"
+                ],
+                "summary": "获取通知设置",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.NotificationSettings"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "更新当前用户的通知设置",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "设置管理"
+                ],
+                "summary": "更新通知设置",
+                "parameters": [
+                    {
+                        "description": "通知设置更新请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.NotificationSettingsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/settings/password": {
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "修改当前用户的登录密码",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "设置管理"
+                ],
+                "summary": "修改密码",
+                "parameters": [
+                    {
+                        "description": "修改密码请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.ChangePasswordRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/settings/profile": {
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "更新当前用户的个人资料信息",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "设置管理"
+                ],
+                "summary": "更新用户资料",
+                "parameters": [
+                    {
+                        "description": "用户资料更新请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.UserProfileUpdateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/settings/system": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取当前用户的系统设置",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "设置管理"
+                ],
+                "summary": "获取系统设置",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.SystemSettings"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "更新当前用户的系统设置",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "设置管理"
+                ],
+                "summary": "更新系统设置",
+                "parameters": [
+                    {
+                        "description": "系统设置更新请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.SystemSettingsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/sla-policies": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 sla:manage 权限。返回分页策略列表。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "SLA管理"
+                ],
+                "summary": "获取SLA策略列表",
+                "parameters": [
+                    {
+                        "enum": [
+                            1,
+                            2,
+                            3,
+                            4
+                        ],
+                        "type": "integer",
+                        "description": "严重程度（1严重、2高危、3中危、4低危）",
+                        "name": "severity_level",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "资产ID",
+                        "name": "asset_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "部门",
+                        "name": "department",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "是否启用",
+                        "name": "enabled",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 1000,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 1,
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 50,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 20,
+                        "description": "每页数量",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "allOf": [
+                                                {
+                                                    "$ref": "#/definitions/model.PaginationResponse"
+                                                },
+                                                {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "data": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "$ref": "#/definitions/model.SLAPolicy"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "查询参数无效",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少sla:manage权限",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "获取策略失败",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 sla:manage 权限。按严重程度设置响应和修复时限，可限定资产或部门；enabled 省略时默认为 true。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "SLA管理"
+                ],
+                "summary": "创建SLA策略",
+                "parameters": [
+                    {
+                        "description": "SLA策略",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.SLAPolicyCreateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.SLAPolicy"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "请求无效或创建失败",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少sla:manage权限",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/sla-policies/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 sla:manage 权限。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "SLA管理"
+                ],
+                "summary": "获取SLA策略详情",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "SLA策略ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.SLAPolicy"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "策略ID无效",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少sla:manage权限",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "SLA策略不存在",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 sla:manage 权限。asset_id 设为 null 可清除资产限定，department 设为空字符串可清除部门限定；省略这些字段时保留现值。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "SLA管理"
+                ],
+                "summary": "更新SLA策略",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "SLA策略ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "策略更新字段",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.SLAPolicyUpdateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "策略ID、请求无效或更新失败",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少sla:manage权限",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 sla:manage 权限。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "SLA管理"
+                ],
+                "summary": "删除SLA策略",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "SLA策略ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "策略ID无效或删除失败",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少sla:manage权限",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/system/audit-logs": {
             "get": {
                 "security": [
@@ -4927,7 +7062,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "获取审计日志列表（分页）",
+                "description": "获取系统审计日志",
                 "produces": [
                     "application/json"
                 ],
@@ -4945,69 +7080,33 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "default": 10,
+                        "default": 20,
                         "description": "每页数量",
                         "name": "page_size",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "搜索关键词",
-                        "name": "keyword",
+                        "description": "操作类型",
+                        "name": "action",
                         "in": "query"
                     },
                     {
-                        "type": "string",
+                        "type": "integer",
                         "description": "用户ID",
                         "name": "user_id",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "用户名",
-                        "name": "username",
+                        "description": "开始时间",
+                        "name": "start_time",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "操作动作",
-                        "name": "action",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "资源类型",
-                        "name": "resource",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "请求方法",
-                        "name": "method",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "响应状态",
-                        "name": "status",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "IP地址",
-                        "name": "ip",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "开始日期",
-                        "name": "start_date",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "结束日期",
-                        "name": "end_date",
+                        "description": "结束时间",
+                        "name": "end_time",
                         "in": "query"
                     }
                 ],
@@ -5030,8 +7129,14 @@ const docTemplate = `{
                             ]
                         }
                     },
-                    "400": {
-                        "description": "Bad Request",
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -5053,14 +7158,19 @@ const docTemplate = `{
                 "tags": [
                     "系统管理"
                 ],
-                "summary": "清理审计日志",
+                "summary": "清理过期的审计日志",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "保留天数",
-                        "name": "days",
-                        "in": "query",
-                        "required": true
+                        "description": "清理请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "integer"
+                            }
+                        }
                     }
                 ],
                 "responses": {
@@ -5075,6 +7185,18 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
                     }
                 }
             }
@@ -5086,14 +7208,14 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "获取审计日志统计信息",
+                "description": "获取审计日志的统计数据",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "系统管理"
                 ],
-                "summary": "获取审计日志统计",
+                "summary": "获取审计日志统计信息",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -5112,6 +7234,12 @@ const docTemplate = `{
                                     }
                                 }
                             ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
                         }
                     },
                     "500": {
@@ -5137,7 +7265,7 @@ const docTemplate = `{
                 "tags": [
                     "系统管理"
                 ],
-                "summary": "获取审计日志详情",
+                "summary": "获取单个审计日志详情",
                 "parameters": [
                     {
                         "type": "integer",
@@ -5166,8 +7294,20 @@ const docTemplate = `{
                             ]
                         }
                     },
-                    "400": {
-                        "description": "Bad Request",
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -5212,6 +7352,12 @@ const docTemplate = `{
                             ]
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -5228,14 +7374,14 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "根据分类获取系统配置列表",
+                "description": "根据配置分类获取相关配置项",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "系统管理"
                 ],
-                "summary": "根据分类获取配置列表",
+                "summary": "根据分类获取系统配置",
                 "parameters": [
                     {
                         "type": "string",
@@ -5267,6 +7413,12 @@ const docTemplate = `{
                             ]
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -5283,14 +7435,14 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "根据键获取系统配置详情",
+                "description": "根据配置键获取配置值",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "系统管理"
                 ],
-                "summary": "获取系统配置详情",
+                "summary": "获取单个系统配置",
                 "parameters": [
                     {
                         "type": "string",
@@ -5319,8 +7471,20 @@ const docTemplate = `{
                             ]
                         }
                     },
-                    "400": {
-                        "description": "Bad Request",
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -5333,10 +7497,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "更新系统配置值",
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "更新指定的系统配置",
                 "produces": [
                     "application/json"
                 ],
@@ -5374,12 +7535,35 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
                     }
                 }
             }
         },
         "/api/v1/tags": {
             "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "获取所有标签列表",
                 "produces": [
                     "application/json"
@@ -5476,6 +7660,11 @@ const docTemplate = `{
         },
         "/api/v1/tags/popular": {
             "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "获取热门标签列表",
                 "produces": [
                     "application/json"
@@ -5526,6 +7715,11 @@ const docTemplate = `{
         },
         "/api/v1/tags/{id}": {
             "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "根据ID获取标签详情",
                 "produces": [
                     "application/json"
@@ -5661,6 +7855,11 @@ const docTemplate = `{
         },
         "/api/v1/templates": {
             "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "获取所有模板列表",
                 "produces": [
                     "application/json"
@@ -5757,6 +7956,11 @@ const docTemplate = `{
         },
         "/api/v1/templates/{id}": {
             "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
                 "description": "根据ID获取模板详情",
                 "produces": [
                     "application/json"
@@ -6006,7 +8210,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "管理员创建新用户",
+                "description": "创建用户需要 user:manage 权限；通过必填 role_id 为新用户分配角色时额外需要 system:permission 权限。",
                 "consumes": [
                     "application/json"
                 ],
@@ -6051,6 +8255,54 @@ const docTemplate = `{
                         "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/users/departments": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "获取可用的部门选项列表",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户管理"
+                ],
+                "summary": "获取部门选项",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "label": {
+                                                        "type": "string"
+                                                    },
+                                                    "value": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     }
                 }
@@ -6113,7 +8365,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "管理员更新用户信息",
+                "description": "更新用户需要 user:manage 权限；通过 role_id 分配或变更用户角色时额外需要 system:permission 权限。",
                 "consumes": [
                     "application/json"
                 ],
@@ -6279,6 +8531,19 @@ const docTemplate = `{
                         "description": "结束日期",
                         "name": "end_date",
                         "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "none",
+                            "within",
+                            "paused",
+                            "overdue",
+                            "completed"
+                        ],
+                        "type": "string",
+                        "description": "SLA状态",
+                        "name": "sla_status",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -6314,8 +8579,9 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "创建新的漏洞",
+                "description": "创建漏洞支持 application/json（直接提交漏洞对象，无附件）和 multipart/form-data（data 为同一对象的 JSON 字符串，screenshots 为可重复的文件字段）。JSON 字段：title、description、cve_id、cnvd_id、owasp_category_id、severity_level、cvss_score、asset_id、assignee_id、impact_scope、reproduction_steps、fix_suggestion；必填 title、severity_level（1-4）、asset_id，cvss_score 为 0-10。拒绝未知字段或多余 JSON。Swagger 2 无法在同一操作混用 body 与 formData 参数，以下参数展示 multipart 形式；JSON 请求请使用 application/json 直接发送对象。",
                 "consumes": [
+                    "multipart/form-data",
                     "application/json"
                 ],
                 "produces": [
@@ -6327,13 +8593,17 @@ const docTemplate = `{
                 "summary": "创建漏洞",
                 "parameters": [
                     {
-                        "description": "创建漏洞请求",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/model.VulnerabilityCreateRequest"
-                        }
+                        "type": "string",
+                        "description": "漏洞对象的JSON字符串，例如 {\\",
+                        "name": "data",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "漏洞截图；多文件重复使用 screenshots 字段",
+                        "name": "screenshots",
+                        "in": "formData"
                     }
                 ],
                 "responses": {
@@ -6357,6 +8627,134 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "413": {
+                        "description": "请求超过上传大小限制",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vulnerabilities/asset-options": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "返回资产选择所需的 id、name、ip_address、domain；需要 vuln:read、vuln:create、vuln:update 中任一权限。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "漏洞管理"
+                ],
+                "summary": "获取漏洞关联资产选项",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/model.VulnerabilityAssetOption"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vulnerabilities/assignee-options": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "返回负责人选择所需的 id、username、real_name；需要 vuln:read、vuln:create、vuln:update 中任一权限。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "漏洞管理"
+                ],
+                "summary": "获取漏洞负责人选项",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/model.AssigneeOption"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -6480,6 +8878,129 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/vulnerabilities/duplicates/candidates": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 vuln:read 权限。按CVE/CNVD、资产、标题和影响范围返回含匹配原因与分数的建议；仅 vuln:manage 或 system:permission 可全局查询，其他用户限发现人、负责人或资产所有者范围。提供 vulnerability_id 时排除自身、已关联及当前用户已忽略候选，不自动合并漏洞。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "漏洞管理"
+                ],
+                "summary": "获取重复漏洞候选",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "当前漏洞ID，用于排除自身和已有关系",
+                        "name": "vulnerability_id",
+                        "in": "query"
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "资产ID",
+                        "name": "asset_id",
+                        "in": "query"
+                    },
+                    {
+                        "maxLength": 50,
+                        "type": "string",
+                        "description": "CVE编号",
+                        "name": "cve_id",
+                        "in": "query"
+                    },
+                    {
+                        "maxLength": 50,
+                        "type": "string",
+                        "description": "CNVD编号",
+                        "name": "cnvd_id",
+                        "in": "query"
+                    },
+                    {
+                        "maxLength": 255,
+                        "type": "string",
+                        "description": "漏洞标题",
+                        "name": "title",
+                        "in": "query"
+                    },
+                    {
+                        "maxLength": 2000,
+                        "type": "string",
+                        "description": "影响范围",
+                        "name": "impact_scope",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 50,
+                        "minimum": 0,
+                        "type": "integer",
+                        "default": 20,
+                        "description": "返回数量（0按默认值20处理）",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/model.DuplicateCandidate"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "查询参数无效",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少读取权限或无权访问漏洞",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "当前漏洞不存在",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "权限检查失败",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/vulnerabilities/owasp-categories": {
             "get": {
                 "security": [
@@ -6556,6 +9077,81 @@ const docTemplate = `{
                                     }
                                 }
                             ]
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vulnerabilities/sla/overdue": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 vuln:read 权限。返回响应或修复逾期且未暂停、未完成的漏洞；普通漏洞列表也支持 sla_status=overdue 筛选。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "SLA管理"
+                ],
+                "summary": "获取SLA逾期漏洞",
+                "parameters": [
+                    {
+                        "maximum": 1000,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 100,
+                        "description": "返回数量",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/model.VulnerabilityInfo"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "limit必须为1-1000",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少vuln:read权限",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "获取逾期列表失败",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
                         }
                     }
                 }
@@ -6794,7 +9390,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "分配漏洞给指定用户",
+                "description": "手动分配漏洞给指定用户",
                 "consumes": [
                     "application/json"
                 ],
@@ -6802,7 +9398,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "漏洞管理"
+                    "分配管理"
                 ],
                 "summary": "分配漏洞",
                 "parameters": [
@@ -6819,10 +9415,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "integer"
-                            }
+                            "$ref": "#/definitions/model.VulnerabilityAssignRequest"
                         }
                     }
                 ],
@@ -6835,6 +9428,1072 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vulnerabilities/{id}/attachments/{attachment_id}/download": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "返回属于指定漏洞的附件文件流，Content-Disposition 为 attachment；需要 vuln:read 权限。",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "漏洞管理"
+                ],
+                "summary": "下载漏洞附件",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "漏洞ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "附件ID",
+                        "name": "attachment_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "附件文件流",
+                        "schema": {
+                            "type": "file"
+                        },
+                        "headers": {
+                            "Cache-Control": {
+                                "type": "string",
+                                "description": "private, no-store"
+                            },
+                            "Content-Disposition": {
+                                "type": "string",
+                                "description": "attachment; filename=原始文件名"
+                            }
+                        }
+                    },
+                    "206": {
+                        "description": "Range 请求的部分附件内容",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vulnerabilities/{id}/attachments/{attachment_id}/preview": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "返回属于指定漏洞的 PNG、JPEG 或 GIF 原始图片流，Content-Disposition 为 inline；不支持预览的附件返回 400。需要 vuln:read 权限。",
+                "produces": [
+                    "image/png",
+                    "image/jpeg",
+                    "image/gif"
+                ],
+                "tags": [
+                    "漏洞管理"
+                ],
+                "summary": "预览漏洞截图",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "漏洞ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "附件ID",
+                        "name": "attachment_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "图片文件流",
+                        "schema": {
+                            "type": "file"
+                        },
+                        "headers": {
+                            "Cache-Control": {
+                                "type": "string",
+                                "description": "private, no-store"
+                            },
+                            "Content-Disposition": {
+                                "type": "string",
+                                "description": "inline; filename=原始文件名"
+                            }
+                        }
+                    },
+                    "206": {
+                        "description": "Range 请求的部分图片内容",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vulnerabilities/{id}/duplicates": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 vuln:read 权限及目标漏洞访问权限。返回可见的已关联漏洞和当前用户忽略的候选摘要，state 为 linked 或 ignored。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "漏洞管理"
+                ],
+                "summary": "获取重复漏洞关系",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "漏洞ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/model.DuplicateRelation"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "漏洞ID无效",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少读取权限或无权访问漏洞",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "漏洞不存在",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "权限检查失败",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vulnerabilities/{id}/duplicates/{candidate_id}/ignore": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 vuln:read 和 vuln:update 权限及两个漏洞的访问权限。仅影响当前用户的候选提示，可恢复并保留操作记录；可选 reason 最长1000字符。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "漏洞管理"
+                ],
+                "summary": "忽略重复漏洞候选",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "漏洞ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "候选漏洞ID",
+                        "name": "candidate_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "忽略理由",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/model.DuplicateIgnoreRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "参数无效或不能忽略自身",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少权限或无权访问任一漏洞",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "漏洞不存在",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "权限检查失败",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 vuln:read 和 vuln:update 权限及两个漏洞的访问权限。恢复当前用户此前忽略的候选并保留操作记录；可选 reason 最长1000字符。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "漏洞管理"
+                ],
+                "summary": "恢复重复漏洞候选",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "漏洞ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "候选漏洞ID",
+                        "name": "candidate_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "恢复理由",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/model.DuplicateIgnoreRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "参数无效",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少权限或无权访问任一漏洞",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "漏洞或忽略记录不存在",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "权限检查失败",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vulnerabilities/{id}/duplicates/{candidate_id}/link": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 vuln:read 和 vuln:update 权限及两个漏洞的访问权限。只记录关联与操作信息，不合并或修改漏洞内容；relation_type 省略时默认为 duplicate，最长30字符，reason 最长1000字符。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "漏洞管理"
+                ],
+                "summary": "人工关联重复漏洞",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "漏洞ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "候选漏洞ID",
+                        "name": "candidate_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "关联类型和理由",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/model.DuplicateLinkRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.DuplicateLinkResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "参数无效或不能关联自身",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少权限或无权访问任一漏洞",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "漏洞不存在",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "409": {
+                        "description": "重复关系已存在",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "权限检查失败",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 vuln:read 和 vuln:update 权限及两个漏洞的访问权限。解除人工关联并保留操作记录，不改变漏洞内容；可选 reason 最长1000字符。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "漏洞管理"
+                ],
+                "summary": "解除重复漏洞关联",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "漏洞ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "候选漏洞ID",
+                        "name": "candidate_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "解除理由",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/model.DuplicateIgnoreRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "参数无效",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少权限或无权访问任一漏洞",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "漏洞或重复关系不存在",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "权限检查失败",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vulnerabilities/{id}/retest": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 vuln:read 和 vuln:verify 权限及漏洞参与范围或管理/审计权限；当前修复负责人不能复测自己的修复。pass 仅允许 fixed 转为 verified，fail 可将 fixed、verified 或 closed 转回 processing。multipart/form-data 使用唯一的 data 字段传入 JSON（如 {\"result\":\"pass\",\"summary\":\"修复已验证\"}），证据文件使用重复的 evidence 字段；也可使用 application/json 直接提交同样的 result/summary 对象且不带证据。result 必须为 pass 或 fail，summary 为 1-10000 字符；不接受客户端提供的存储路径或证据元数据。证据每个最多 5 MiB、最多 5 个、合计最多 20 MiB，部署配置可进一步收紧大小和数量。",
+                "consumes": [
+                    "multipart/form-data",
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "漏洞复测"
+                ],
+                "summary": "创建独立漏洞复测",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "漏洞ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "JSON对象，包含result（pass/fail）和summary（1-10000字符）",
+                        "name": "data",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "可重复提交的证据文件；无证据时可省略",
+                        "name": "evidence",
+                        "in": "formData"
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "复测已创建",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.VulnerabilityRetestInfo"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "请求格式、复测内容或证据无效",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少读取或复测权限，或复测者为当前修复负责人",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "漏洞不存在",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "409": {
+                        "description": "漏洞不是fixed状态、已验证或并发复测冲突",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "413": {
+                        "description": "复测请求超过大小限制",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "429": {
+                        "description": "上传请求过于频繁",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "复测服务、存储不可用或处理失败",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vulnerabilities/{id}/retests": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 vuln:read 权限及目标漏洞访问权限。返回独立复测记录和证据显示信息，不返回私有存储路径。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "漏洞复测"
+                ],
+                "summary": "获取漏洞复测记录",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "漏洞ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/model.VulnerabilityRetestInfo"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "漏洞ID无效",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少读取权限或无权访问漏洞",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "漏洞不存在",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "复测服务不可用或处理失败",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vulnerabilities/{id}/retests/{retest_id}/evidence/{index}/download": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 vuln:read 权限及目标复测记录访问权限。index 为证据数组的零基索引；成功返回受保护的附件文件流，私有存储路径不对客户端公开。",
+                "produces": [
+                    "application/octet-stream",
+                    "application/json"
+                ],
+                "tags": [
+                    "漏洞复测"
+                ],
+                "summary": "下载复测证据",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "漏洞ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "复测记录ID",
+                        "name": "retest_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "minimum": 0,
+                        "type": "integer",
+                        "description": "证据数组索引（从0开始）",
+                        "name": "index",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "复测证据文件",
+                        "schema": {
+                            "type": "file"
+                        },
+                        "headers": {
+                            "Cache-Control": {
+                                "type": "string",
+                                "description": "private, no-store"
+                            },
+                            "Content-Disposition": {
+                                "type": "string",
+                                "description": "attachment; filename=..."
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "漏洞、复测ID或证据索引无效",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少读取权限或无权访问复测记录",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "漏洞、复测记录或证据文件不存在",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "复测服务或存储不可用",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vulnerabilities/{id}/sla": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 vuln:read 权限。返回策略快照、当前计时周期、响应/修复期限及暂停信息。sla_status 为 none、within、paused、overdue 或 completed；剩余秒数可为空或负数，逾期等级为 0、1、24 或 72。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "SLA管理"
+                ],
+                "summary": "获取漏洞SLA状态",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "漏洞ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.SLAState"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "漏洞ID无效",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少vuln:read权限",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "漏洞不存在或无法读取状态",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vulnerabilities/{id}/sla/pause": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 vuln:read 和 sla:manage 权限；可选 JSON 请求体提供 reason（最长500字符），暂停原因和操作者记录在漏洞时间线。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "SLA管理"
+                ],
+                "summary": "暂停漏洞SLA计时",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "漏洞ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "暂停原因",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/model.SLAPauseRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "漏洞ID无效或暂停失败",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少vuln:read或sla:manage权限",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/vulnerabilities/{id}/sla/resume": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 vuln:read 和 sla:manage 权限，无需请求体；恢复后将暂停时长计入期限。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "SLA管理"
+                ],
+                "summary": "恢复漏洞SLA计时",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "漏洞ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "漏洞ID无效或恢复失败",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少vuln:read或sla:manage权限",
                         "schema": {
                             "$ref": "#/definitions/model.Response"
                         }
@@ -7286,6 +10945,241 @@ const docTemplate = `{
                 }
             }
         },
+        "model.AIChatRequest": {
+            "type": "object",
+            "required": [
+                "message"
+            ],
+            "properties": {
+                "context": {
+                    "description": "系统上下文信息",
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "session_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.AIChatResponse": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                },
+                "session_id": {
+                    "type": "string"
+                },
+                "suggestions": {
+                    "description": "建议的后续问题",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "tokens_used": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.AIConfiguration": {
+            "type": "object",
+            "properties": {
+                "api_url": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "has_api_key": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "max_tokens": {
+                    "type": "integer"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "temperature": {
+                    "type": "number"
+                },
+                "timeout": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user": {
+                    "description": "关联用户",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/model.User"
+                        }
+                    ]
+                },
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.AIConfigurationRequest": {
+            "type": "object",
+            "required": [
+                "provider"
+            ],
+            "properties": {
+                "api_key": {
+                    "type": "string"
+                },
+                "api_url": {
+                    "type": "string"
+                },
+                "clear_api_key": {
+                    "type": "boolean"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "max_tokens": {
+                    "type": "integer"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "temperature": {
+                    "type": "number"
+                },
+                "timeout": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.AIConversation": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "messages": {
+                    "description": "JSON格式存储对话消息",
+                    "type": "string"
+                },
+                "session_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "active, archived, deleted",
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "tokens_used": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user": {
+                    "description": "关联用户",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/model.User"
+                        }
+                    ]
+                },
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.AIProvider": {
+            "type": "object",
+            "properties": {
+                "api_url": {
+                    "type": "string"
+                },
+                "default_model": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "models": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "requires_key": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "model.AITestRequest": {
+            "type": "object",
+            "required": [
+                "api_key",
+                "provider"
+            ],
+            "properties": {
+                "api_key": {
+                    "type": "string"
+                },
+                "api_url": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "test_message": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.AIUsageStats": {
+            "type": "object",
+            "properties": {
+                "active_sessions": {
+                    "type": "integer"
+                },
+                "total_conversations": {
+                    "type": "integer"
+                },
+                "total_messages": {
+                    "type": "integer"
+                },
+                "total_tokens": {
+                    "type": "integer"
+                }
+            }
+        },
         "model.Asset": {
             "type": "object",
             "required": [
@@ -7695,6 +11589,20 @@ const docTemplate = `{
                 }
             }
         },
+        "model.AssigneeOption": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "real_name": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
         "model.AssignmentConditions": {
             "type": "object",
             "additionalProperties": true
@@ -7990,16 +11898,20 @@ const docTemplate = `{
         "model.ChangePasswordRequest": {
             "type": "object",
             "required": [
-                "new_password",
-                "old_password"
+                "confirm_password",
+                "current_password",
+                "new_password"
             ],
             "properties": {
+                "confirm_password": {
+                    "type": "string"
+                },
+                "current_password": {
+                    "type": "string"
+                },
                 "new_password": {
                     "type": "string",
                     "minLength": 6
-                },
-                "old_password": {
-                    "type": "string"
                 }
             }
         },
@@ -8017,12 +11929,19 @@ const docTemplate = `{
                         "$ref": "#/definitions/model.UserActivity"
                     }
                 },
+                "asset_time_stats": {
+                    "$ref": "#/definitions/model.TimeRangeStats"
+                },
                 "asset_type_stats": {
                     "description": "资产类型统计",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/model.AssetTypeCount"
                     }
+                },
+                "assets_with_vulnerabilities": {
+                    "description": "存在漏洞记录的资产去重数量",
+                    "type": "integer"
                 },
                 "recent_trends": {
                     "description": "最近趋势",
@@ -8031,6 +11950,9 @@ const docTemplate = `{
                             "$ref": "#/definitions/model.TrendStats"
                         }
                     ]
+                },
+                "report_time_stats": {
+                    "$ref": "#/definitions/model.TimeRangeStats"
                 },
                 "severity_stats": {
                     "description": "严重程度统计",
@@ -8059,11 +11981,22 @@ const docTemplate = `{
                     "description": "总体统计",
                     "type": "integer"
                 },
+                "user_time_stats": {
+                    "$ref": "#/definitions/model.TimeRangeStats"
+                },
                 "vulnerability_stats": {
                     "description": "漏洞状态统计",
                     "allOf": [
                         {
                             "$ref": "#/definitions/model.VulnerabilityStatusStats"
+                        }
+                    ]
+                },
+                "vulnerability_time_stats": {
+                    "description": "时间范围统计 - 用于计算百分比变化",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/model.TimeRangeStats"
                         }
                     ]
                 }
@@ -8093,6 +12026,113 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.DuplicateCandidate": {
+            "type": "object",
+            "properties": {
+                "asset_id": {
+                    "type": "integer"
+                },
+                "cnvd_id": {
+                    "type": "string"
+                },
+                "cve_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "reasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "score": {
+                    "type": "integer"
+                },
+                "severity_level": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.DuplicateIgnoreRequest": {
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string",
+                    "maxLength": 1000
+                }
+            }
+        },
+        "model.DuplicateLinkRequest": {
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string",
+                    "maxLength": 1000
+                },
+                "relation_type": {
+                    "type": "string",
+                    "maxLength": 30
+                }
+            }
+        },
+        "model.DuplicateLinkResponse": {
+            "type": "object",
+            "properties": {
+                "candidate": {
+                    "$ref": "#/definitions/model.VulnerabilitySummary"
+                },
+                "linked_at": {
+                    "type": "string"
+                },
+                "operator_id": {
+                    "type": "integer"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "relation_type": {
+                    "type": "string"
+                },
+                "source": {
+                    "$ref": "#/definitions/model.VulnerabilitySummary"
+                }
+            }
+        },
+        "model.DuplicateRelation": {
+            "type": "object",
+            "properties": {
+                "occurred_at": {
+                    "type": "string"
+                },
+                "operator_id": {
+                    "type": "integer"
+                },
+                "other": {
+                    "$ref": "#/definitions/model.VulnerabilitySummary"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "relation_type": {
+                    "type": "string"
+                },
+                "restored_at": {
+                    "type": "string"
+                },
+                "state": {
+                    "description": "linked or ignored",
                     "type": "string"
                 }
             }
@@ -8624,6 +12664,20 @@ const docTemplate = `{
                 }
             }
         },
+        "model.MonthlyTrendPoint": {
+            "type": "object",
+            "properties": {
+                "month": {
+                    "type": "string"
+                },
+                "resolved": {
+                    "type": "integer"
+                },
+                "vulnerabilities": {
+                    "type": "integer"
+                }
+            }
+        },
         "model.Notification": {
             "type": "object",
             "properties": {
@@ -8812,6 +12866,140 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "vulnerability_updated": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "model.NotificationSettings": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "report_email": {
+                    "description": "报告相关通知",
+                    "type": "boolean"
+                },
+                "report_push": {
+                    "type": "boolean"
+                },
+                "report_sms": {
+                    "type": "boolean"
+                },
+                "social_email": {
+                    "description": "社交相关通知",
+                    "type": "boolean"
+                },
+                "social_push": {
+                    "type": "boolean"
+                },
+                "social_sms": {
+                    "type": "boolean"
+                },
+                "system_email": {
+                    "description": "系统相关通知",
+                    "type": "boolean"
+                },
+                "system_push": {
+                    "type": "boolean"
+                },
+                "system_sms": {
+                    "type": "boolean"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "integer"
+                },
+                "vuln_assigned_email": {
+                    "type": "boolean"
+                },
+                "vuln_assigned_push": {
+                    "type": "boolean"
+                },
+                "vuln_assigned_sms": {
+                    "type": "boolean"
+                },
+                "vuln_fixed_email": {
+                    "type": "boolean"
+                },
+                "vuln_fixed_push": {
+                    "type": "boolean"
+                },
+                "vuln_fixed_sms": {
+                    "type": "boolean"
+                },
+                "vuln_new_email": {
+                    "description": "漏洞相关通知",
+                    "type": "boolean"
+                },
+                "vuln_new_push": {
+                    "type": "boolean"
+                },
+                "vuln_new_sms": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "model.NotificationSettingsRequest": {
+            "type": "object",
+            "properties": {
+                "report_email": {
+                    "type": "boolean"
+                },
+                "report_push": {
+                    "type": "boolean"
+                },
+                "report_sms": {
+                    "type": "boolean"
+                },
+                "social_email": {
+                    "type": "boolean"
+                },
+                "social_push": {
+                    "type": "boolean"
+                },
+                "social_sms": {
+                    "type": "boolean"
+                },
+                "system_email": {
+                    "type": "boolean"
+                },
+                "system_push": {
+                    "type": "boolean"
+                },
+                "system_sms": {
+                    "type": "boolean"
+                },
+                "vuln_assigned_email": {
+                    "type": "boolean"
+                },
+                "vuln_assigned_push": {
+                    "type": "boolean"
+                },
+                "vuln_assigned_sms": {
+                    "type": "boolean"
+                },
+                "vuln_fixed_email": {
+                    "type": "boolean"
+                },
+                "vuln_fixed_push": {
+                    "type": "boolean"
+                },
+                "vuln_fixed_sms": {
+                    "type": "boolean"
+                },
+                "vuln_new_email": {
+                    "type": "boolean"
+                },
+                "vuln_new_push": {
+                    "type": "boolean"
+                },
+                "vuln_new_sms": {
                     "type": "boolean"
                 }
             }
@@ -9044,9 +13232,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "file_name": {
-                    "type": "string"
-                },
-                "file_path": {
                     "type": "string"
                 },
                 "file_size": {
@@ -9441,6 +13626,183 @@ const docTemplate = `{
                 }
             }
         },
+        "model.SLAPauseRequest": {
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string",
+                    "maxLength": 500
+                }
+            }
+        },
+        "model.SLAPolicy": {
+            "type": "object",
+            "properties": {
+                "asset_id": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "department": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fix_hours": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "response_hours": {
+                    "type": "integer"
+                },
+                "severity_level": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.SLAPolicyCreateRequest": {
+            "type": "object",
+            "required": [
+                "fix_hours",
+                "name",
+                "response_hours",
+                "severity_level"
+            ],
+            "properties": {
+                "asset_id": {
+                    "type": "integer"
+                },
+                "department": {
+                    "type": "string",
+                    "maxLength": 100
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fix_hours": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1
+                },
+                "response_hours": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "severity_level": {
+                    "type": "integer",
+                    "enum": [
+                        1,
+                        2,
+                        3,
+                        4
+                    ]
+                }
+            }
+        },
+        "model.SLAPolicyUpdateRequest": {
+            "type": "object",
+            "properties": {
+                "asset_id": {
+                    "type": "integer"
+                },
+                "department": {
+                    "type": "string",
+                    "maxLength": 100
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fix_hours": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "minLength": 1
+                },
+                "response_hours": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "severity_level": {
+                    "type": "integer",
+                    "enum": [
+                        1,
+                        2,
+                        3,
+                        4
+                    ]
+                }
+            }
+        },
+        "model.SLAState": {
+            "type": "object",
+            "properties": {
+                "first_response_at": {
+                    "type": "string"
+                },
+                "fix_due_at": {
+                    "type": "string"
+                },
+                "fix_overdue": {
+                    "type": "boolean"
+                },
+                "fix_overdue_level": {
+                    "type": "integer"
+                },
+                "fix_remaining_seconds": {
+                    "type": "integer"
+                },
+                "pause_ended_at": {
+                    "type": "string"
+                },
+                "pause_started_at": {
+                    "type": "string"
+                },
+                "paused_seconds": {
+                    "type": "integer"
+                },
+                "response_due_at": {
+                    "type": "string"
+                },
+                "response_overdue": {
+                    "type": "boolean"
+                },
+                "response_overdue_level": {
+                    "type": "integer"
+                },
+                "response_remaining_seconds": {
+                    "type": "integer"
+                },
+                "sla_cycle": {
+                    "type": "integer"
+                },
+                "sla_policy_id": {
+                    "type": "integer"
+                },
+                "sla_policy_name": {
+                    "type": "string"
+                },
+                "sla_status": {
+                    "type": "string"
+                }
+            }
+        },
         "model.SeverityCount": {
             "type": "object",
             "properties": {
@@ -9558,6 +13920,72 @@ const docTemplate = `{
             "properties": {
                 "value": {
                     "$ref": "#/definitions/model.ConfigValue"
+                }
+            }
+        },
+        "model.SystemSettings": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "date_format": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "language": {
+                    "type": "string"
+                },
+                "theme": {
+                    "description": "light, dark, system",
+                    "type": "string"
+                },
+                "time_format": {
+                    "type": "string"
+                },
+                "timezone": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.SystemSettingsRequest": {
+            "type": "object",
+            "properties": {
+                "date_format": {
+                    "type": "string"
+                },
+                "language": {
+                    "type": "string",
+                    "enum": [
+                        "zh-CN",
+                        "en-US"
+                    ]
+                },
+                "theme": {
+                    "type": "string",
+                    "enum": [
+                        "light",
+                        "dark",
+                        "system"
+                    ]
+                },
+                "time_format": {
+                    "type": "string",
+                    "enum": [
+                        "12h",
+                        "24h"
+                    ]
+                },
+                "timezone": {
+                    "type": "string"
                 }
             }
         },
@@ -9893,6 +14321,54 @@ const docTemplate = `{
                 }
             }
         },
+        "model.TwoFactorSetupResponse": {
+            "type": "object",
+            "properties": {
+                "expires_at": {
+                    "type": "string"
+                },
+                "otpauth_url": {
+                    "type": "string"
+                },
+                "qr_code_data_url": {
+                    "type": "string"
+                },
+                "qr_code_url": {
+                    "type": "string"
+                },
+                "secret": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.TwoFactorStatusResponse": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "needs_rebind": {
+                    "type": "boolean"
+                },
+                "pending": {
+                    "type": "boolean"
+                },
+                "recovery_codes_remaining": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.TwoFactorVerifyRequest": {
+            "type": "object",
+            "required": [
+                "code"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string"
+                }
+            }
+        },
         "model.User": {
             "type": "object",
             "required": [
@@ -9940,6 +14416,9 @@ const docTemplate = `{
                 "status": {
                     "description": "1-正常，0-禁用",
                     "type": "integer"
+                },
+                "two_factor_enabled": {
+                    "type": "boolean"
                 },
                 "updated_at": {
                     "type": "string"
@@ -10107,7 +14586,16 @@ const docTemplate = `{
                 "username"
             ],
             "properties": {
+                "challenge_token": {
+                    "type": "string"
+                },
                 "password": {
+                    "type": "string"
+                },
+                "recovery_code": {
+                    "type": "string"
+                },
+                "totp_code": {
                     "type": "string"
                 },
                 "username": {
@@ -10118,7 +14606,19 @@ const docTemplate = `{
         "model.UserLoginResponse": {
             "type": "object",
             "properties": {
+                "challenge_token": {
+                    "type": "string"
+                },
                 "expires_at": {
+                    "type": "string"
+                },
+                "mfa_rebind_required": {
+                    "type": "boolean"
+                },
+                "mfa_required": {
+                    "type": "boolean"
+                },
+                "rebind_token": {
                     "type": "string"
                 },
                 "token": {
@@ -10126,6 +14626,28 @@ const docTemplate = `{
                 },
                 "user": {
                     "$ref": "#/definitions/model.UserInfo"
+                }
+            }
+        },
+        "model.UserProfileUpdateRequest": {
+            "type": "object",
+            "properties": {
+                "department": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "real_name": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string",
+                    "maxLength": 50,
+                    "minLength": 3
                 }
             }
         },
@@ -10238,6 +14760,18 @@ const docTemplate = `{
                 "discoverer_id": {
                     "type": "integer"
                 },
+                "first_response_at": {
+                    "type": "string"
+                },
+                "fix_due_at": {
+                    "type": "string"
+                },
+                "fix_overdue": {
+                    "type": "boolean"
+                },
+                "fix_overdue_level": {
+                    "type": "integer"
+                },
                 "fix_suggestion": {
                     "type": "string"
                 },
@@ -10256,8 +14790,27 @@ const docTemplate = `{
                 "owasp_category_id": {
                     "type": "integer"
                 },
+                "pause_ended_at": {
+                    "type": "string"
+                },
+                "pause_started_at": {
+                    "type": "string"
+                },
+                "paused_seconds": {
+                    "type": "integer"
+                },
                 "reproduction_steps": {
                     "type": "string"
+                },
+                "response_due_at": {
+                    "description": "SLA fields are nullable/zero-valued so existing databases remain readable\nwhile MigrationManager adds the columns in a later deployment step.",
+                    "type": "string"
+                },
+                "response_overdue": {
+                    "type": "boolean"
+                },
+                "response_overdue_level": {
+                    "type": "integer"
                 },
                 "severity_level": {
                     "type": "integer",
@@ -10267,6 +14820,15 @@ const docTemplate = `{
                         3,
                         4
                     ]
+                },
+                "sla_cycle": {
+                    "type": "integer"
+                },
+                "sla_policy_id": {
+                    "type": "integer"
+                },
+                "sla_policy_name": {
+                    "type": "string"
                 },
                 "status": {
                     "type": "string"
@@ -10338,6 +14900,23 @@ const docTemplate = `{
                 }
             }
         },
+        "model.VulnerabilityAssetOption": {
+            "type": "object",
+            "properties": {
+                "domain": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "ip_address": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "model.VulnerabilityAssignRequest": {
             "type": "object",
             "required": [
@@ -10358,9 +14937,6 @@ const docTemplate = `{
                 "created_at": {
                     "type": "string"
                 },
-                "file_path": {
-                    "type": "string"
-                },
                 "file_size": {
                     "type": "integer"
                 },
@@ -10373,78 +14949,17 @@ const docTemplate = `{
                 "id": {
                     "type": "integer"
                 },
-                "original_name": {
+                "mime_type": {
                     "type": "string"
                 },
-                "uploader": {
-                    "description": "关联",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/model.User"
-                        }
-                    ]
+                "original_name": {
+                    "type": "string"
                 },
                 "uploader_id": {
                     "type": "integer"
                 },
                 "vulnerability_id": {
                     "type": "integer"
-                }
-            }
-        },
-        "model.VulnerabilityCreateRequest": {
-            "type": "object",
-            "required": [
-                "asset_id",
-                "severity_level",
-                "title"
-            ],
-            "properties": {
-                "asset_id": {
-                    "type": "integer"
-                },
-                "assignee_id": {
-                    "type": "integer"
-                },
-                "cnvd_id": {
-                    "type": "string"
-                },
-                "cve_id": {
-                    "type": "string"
-                },
-                "cvss_score": {
-                    "type": "number",
-                    "maximum": 10,
-                    "minimum": 0
-                },
-                "description": {
-                    "type": "string"
-                },
-                "fix_suggestion": {
-                    "type": "string"
-                },
-                "impact_scope": {
-                    "type": "string"
-                },
-                "owasp_category_id": {
-                    "type": "integer"
-                },
-                "reproduction_steps": {
-                    "type": "string"
-                },
-                "severity_level": {
-                    "type": "integer",
-                    "enum": [
-                        1,
-                        2,
-                        3,
-                        4
-                    ]
-                },
-                "title": {
-                    "type": "string",
-                    "maxLength": 255,
-                    "minLength": 1
                 }
             }
         },
@@ -10499,6 +15014,21 @@ const docTemplate = `{
                 "discoverer_id": {
                     "type": "integer"
                 },
+                "first_response_at": {
+                    "type": "string"
+                },
+                "fix_due_at": {
+                    "type": "string"
+                },
+                "fix_overdue": {
+                    "type": "boolean"
+                },
+                "fix_overdue_level": {
+                    "type": "integer"
+                },
+                "fix_remaining_seconds": {
+                    "type": "integer"
+                },
                 "fix_suggestion": {
                     "type": "string"
                 },
@@ -10517,13 +15047,46 @@ const docTemplate = `{
                 "owasp_category_id": {
                     "type": "integer"
                 },
+                "pause_ended_at": {
+                    "type": "string"
+                },
+                "pause_started_at": {
+                    "type": "string"
+                },
+                "paused_seconds": {
+                    "type": "integer"
+                },
                 "reproduction_steps": {
                     "type": "string"
+                },
+                "response_due_at": {
+                    "type": "string"
+                },
+                "response_overdue": {
+                    "type": "boolean"
+                },
+                "response_overdue_level": {
+                    "type": "integer"
+                },
+                "response_remaining_seconds": {
+                    "type": "integer"
                 },
                 "severity_level": {
                     "type": "integer"
                 },
                 "severity_level_text": {
+                    "type": "string"
+                },
+                "sla_cycle": {
+                    "type": "integer"
+                },
+                "sla_policy_id": {
+                    "type": "integer"
+                },
+                "sla_policy_name": {
+                    "type": "string"
+                },
+                "sla_status": {
                     "type": "string"
                 },
                 "status": {
@@ -10540,6 +15103,67 @@ const docTemplate = `{
                 },
                 "verified_at": {
                     "type": "string"
+                }
+            }
+        },
+        "model.VulnerabilityRetestEvidenceInfo": {
+            "type": "object",
+            "properties": {
+                "file_size": {
+                    "type": "integer"
+                },
+                "file_type": {
+                    "type": "string"
+                },
+                "filename": {
+                    "type": "string"
+                },
+                "mime_type": {
+                    "type": "string"
+                },
+                "original_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.VulnerabilityRetestInfo": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "evidence_attachments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.VulnerabilityRetestEvidenceInfo"
+                    }
+                },
+                "fixer_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "new_status": {
+                    "type": "string"
+                },
+                "previous_status": {
+                    "type": "string"
+                },
+                "result": {
+                    "type": "string"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "tester_id": {
+                    "type": "integer"
+                },
+                "tester_name": {
+                    "type": "string"
+                },
+                "vulnerability_id": {
+                    "type": "integer"
                 }
             }
         },
@@ -10605,6 +15229,32 @@ const docTemplate = `{
                 }
             }
         },
+        "model.VulnerabilitySummary": {
+            "type": "object",
+            "properties": {
+                "asset_id": {
+                    "type": "integer"
+                },
+                "cnvd_id": {
+                    "type": "string"
+                },
+                "cve_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "severity_level": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
         "model.VulnerabilityTrendItem": {
             "type": "object",
             "properties": {
@@ -10634,10 +15284,12 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "cnvd_id": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 50
                 },
                 "cve_id": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 50
                 },
                 "cvss_score": {
                     "type": "number",
@@ -10688,7 +15340,6 @@ const docTemplate = `{
     },
     "securityDefinitions": {
         "ApiKeyAuth": {
-            "description": "Bearer token authentication",
             "type": "apiKey",
             "name": "Authorization",
             "in": "header"
@@ -10698,12 +15349,12 @@ const docTemplate = `{
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "1.0.0",
-	Host:             "localhost:8080",
+	Version:          "1.1.0",
+	Host:             "",
 	BasePath:         "/",
 	Schemes:          []string{},
 	Title:            "VulnArk API",
-	Description:      "VulnArk漏洞管理系统API文档",
+	Description:      "VulnArk 漏洞管理系统。创建漏洞同时支持 JSON 和 multipart；敏感文件必须携带 Bearer token 下载。",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

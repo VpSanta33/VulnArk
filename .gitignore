@@ -155,5 +155,15 @@ backend/exports/
 .vscode/settings.json
 .idea/workspace.xml
 
-# Frontend directory (compiled version is in backend/web/)
-frontend/
+# Frontend source is versioned; local configuration stays private.
+frontend/.env*
+!frontend/.env.example
+frontend/dist/
+# Bun is the authoritative frontend dependency lock.
+frontend/package-lock.json
+
+# Bootstrap credentials and private deployment configuration
+admin_credentials.txt
+backend/admin_credentials.txt
+backend/cmd/admin_credentials.txt
+backend/configs/config.local.yaml

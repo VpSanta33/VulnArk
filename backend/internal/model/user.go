@@ -12,7 +12,7 @@ type Role struct {
 	ID          uint        `json:"id" gorm:"primarykey"`
 	CreatedAt   time.Time   `json:"created_at"`
 	UpdatedAt   time.Time   `json:"updated_at"`
-	Name        string      `json:"name" gorm:"size:50;not null" binding:"required"`
+	Name        string      `json:"name" gorm:"size:50;not null;uniqueIndex:idx_role_name" binding:"required"`
 	Description string      `json:"description" gorm:"size:255"`
 	Permissions Permissions `json:"permissions" gorm:"type:json"`
 	Users       []User      `json:"-" gorm:"foreignKey:RoleID"`
@@ -35,32 +35,43 @@ func (p *Permissions) Scan(value interface{}) error {
 		*p = Permissions{}
 		return nil
 	}
-	
-	bytes, ok := value.([]byte)
-	if !ok {
-		return errors.New("无法将值转换为[]byte")
+
+	var bytes []byte
+	switch v := value.(type) {
+	case []byte:
+		bytes = v
+	case string:
+		bytes = []byte(v)
+	default:
+		return errors.New("无法读取权限JSON")
 	}
-	
+
 	return json.Unmarshal(bytes, p)
 }
 
 // User 用户模型
 type User struct {
-	ID          uint       `json:"id" gorm:"primarykey"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	Username    string     `json:"username" gorm:"size:50;not null" binding:"required"`
-	Email       string     `json:"email" gorm:"size:100;not null" binding:"required,email"`
-	PasswordHash string    `json:"-" gorm:"size:255;not null"`
-	RealName    string     `json:"real_name" gorm:"size:50;not null" binding:"required"`
-	Phone       string     `json:"phone" gorm:"size:20"`
-	Avatar      string     `json:"avatar" gorm:"size:255"`
-	RoleID      uint       `json:"role_id" gorm:"not null" binding:"required"`
-	Department        string     `json:"department" gorm:"size:100"`
-	Status            int        `json:"status" gorm:"default:1"` // 1-正常，0-禁用
-	TwoFactorEnabled  bool       `json:"two_factor_enabled" gorm:"default:false"`
-	TwoFactorSecret   string     `json:"-" gorm:"size:255"`
-	LastLoginAt       *time.Time `json:"last_login_at"`
+	ID                        uint       `json:"id" gorm:"primarykey"`
+	CreatedAt                 time.Time  `json:"created_at" gorm:"index:idx_user_created_at"`
+	UpdatedAt                 time.Time  `json:"updated_at"`
+	Username                  string     `json:"username" gorm:"size:50;not null;uniqueIndex:idx_user_username" binding:"required"`
+	Email                     string     `json:"email" gorm:"size:100;not null;uniqueIndex:idx_user_email" binding:"required,email"`
+	PasswordHash              string     `json:"-" gorm:"size:255;not null"`
+	RealName                  string     `json:"real_name" gorm:"size:50;not null" binding:"required"`
+	Phone                     string     `json:"phone" gorm:"size:20"`
+	Avatar                    string     `json:"avatar" gorm:"size:255"`
+	RoleID                    uint       `json:"role_id" gorm:"not null" binding:"required"`
+	Department                string     `json:"department" gorm:"size:100"`
+	Status                    int        `json:"status" gorm:"default:1"` // 1-正常，0-禁用
+	TwoFactorEnabled          bool       `json:"two_factor_enabled" gorm:"default:false"`
+	TwoFactorSecret           string     `json:"-" gorm:"size:255"`
+	TokenVersion              uint64     `json:"-" gorm:"not null;default:1"`
+	TwoFactorPendingSecret    string     `json:"-" gorm:"size:255"`
+	TwoFactorPendingExpiresAt *time.Time `json:"-"`
+	TwoFactorRecoveryCodes    string     `json:"-" gorm:"type:text"`
+	TwoFactorLastUsedStep     int64      `json:"-" gorm:"not null;default:-1"`
+	TwoFactorNeedsRebind      bool       `json:"-" gorm:"not null;default:false"`
+	LastLoginAt               *time.Time `json:"last_login_at"`
 
 	// 关联
 	Role Role `json:"role" gorm:"foreignKey:RoleID"`
@@ -99,28 +110,35 @@ type UserUpdateRequest struct {
 
 // UserLoginRequest 用户登录请求
 type UserLoginRequest struct {
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required"`
+	Username       string `json:"username" binding:"required"`
+	Password       string `json:"password" binding:"required"`
+	ChallengeToken string `json:"challenge_token"`
+	TOTPCode       string `json:"totp_code"`
+	RecoveryCode   string `json:"recovery_code"`
 }
 
 // UserLoginResponse 用户登录响应
 type UserLoginResponse struct {
-	Token     string    `json:"token"`
-	ExpiresAt time.Time `json:"expires_at"`
-	User      UserInfo  `json:"user"`
+	Token             string    `json:"token,omitempty"`
+	ExpiresAt         time.Time `json:"expires_at,omitempty"`
+	User              UserInfo  `json:"user,omitempty"`
+	MFARequired       bool      `json:"mfa_required,omitempty"`
+	MFARebindRequired bool      `json:"mfa_rebind_required,omitempty"`
+	ChallengeToken    string    `json:"challenge_token,omitempty"`
+	RebindToken       string    `json:"rebind_token,omitempty"`
 }
 
 // UserInfo 用户信息
 type UserInfo struct {
-	ID         uint        `json:"id"`
-	Username   string      `json:"username"`
-	Email      string      `json:"email"`
-	RealName   string      `json:"real_name"`
-	Phone      string      `json:"phone"`
-	Avatar     string      `json:"avatar"`
-	Department string      `json:"department"`
-	Status     int         `json:"status"`
-	Role       RoleInfo    `json:"role"`
+	ID          uint       `json:"id"`
+	Username    string     `json:"username"`
+	Email       string     `json:"email"`
+	RealName    string     `json:"real_name"`
+	Phone       string     `json:"phone"`
+	Avatar      string     `json:"avatar"`
+	Department  string     `json:"department"`
+	Status      int        `json:"status"`
+	Role        RoleInfo   `json:"role"`
 	LastLoginAt *time.Time `json:"last_login_at"`
 }
 
@@ -155,12 +173,7 @@ type RoleUpdateRequest struct {
 
 // HasPermission 检查用户是否有指定权限
 func (u *User) HasPermission(permission string) bool {
-	for _, p := range u.Role.Permissions {
-		if p == permission {
-			return true
-		}
-	}
-	return false
+	return PermissionGranted(u.Role.Permissions, permission)
 }
 
 // IsActive 检查用户是否激活
@@ -200,15 +213,15 @@ type UserProfileUpdateRequest struct {
 
 // SystemSettings 系统设置模型
 type SystemSettings struct {
-	ID        uint      `json:"id" gorm:"primarykey"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	UserID    uint      `json:"user_id" gorm:"not null;uniqueIndex"`
-	Theme     string    `json:"theme" gorm:"size:20;default:'system'"` // light, dark, system
-	Language  string    `json:"language" gorm:"size:10;default:'zh-CN'"`
-	Timezone  string    `json:"timezone" gorm:"size:50;default:'Asia/Shanghai'"`
-	DateFormat string   `json:"date_format" gorm:"size:20;default:'YYYY-MM-DD'"`
-	TimeFormat string   `json:"time_format" gorm:"size:10;default:'24h'"`
+	ID         uint      `json:"id" gorm:"primarykey"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+	UserID     uint      `json:"user_id" gorm:"not null;uniqueIndex"`
+	Theme      string    `json:"theme" gorm:"size:20;default:'system'"` // light, dark, system
+	Language   string    `json:"language" gorm:"size:10;default:'zh-CN'"`
+	Timezone   string    `json:"timezone" gorm:"size:50;default:'Asia/Shanghai'"`
+	DateFormat string    `json:"date_format" gorm:"size:20;default:'YYYY-MM-DD'"`
+	TimeFormat string    `json:"time_format" gorm:"size:10;default:'24h'"`
 
 	// 关联
 	User User `json:"-" gorm:"foreignKey:UserID"`
@@ -236,15 +249,15 @@ type NotificationSettings struct {
 	UserID    uint      `json:"user_id" gorm:"not null;uniqueIndex"`
 
 	// 漏洞相关通知
-	VulnNewEmail       bool `json:"vuln_new_email" gorm:"default:true"`
-	VulnNewPush        bool `json:"vuln_new_push" gorm:"default:true"`
-	VulnNewSMS         bool `json:"vuln_new_sms" gorm:"default:false"`
-	VulnAssignedEmail  bool `json:"vuln_assigned_email" gorm:"default:true"`
-	VulnAssignedPush   bool `json:"vuln_assigned_push" gorm:"default:true"`
-	VulnAssignedSMS    bool `json:"vuln_assigned_sms" gorm:"default:true"`
-	VulnFixedEmail     bool `json:"vuln_fixed_email" gorm:"default:true"`
-	VulnFixedPush      bool `json:"vuln_fixed_push" gorm:"default:false"`
-	VulnFixedSMS       bool `json:"vuln_fixed_sms" gorm:"default:false"`
+	VulnNewEmail      bool `json:"vuln_new_email" gorm:"default:true"`
+	VulnNewPush       bool `json:"vuln_new_push" gorm:"default:true"`
+	VulnNewSMS        bool `json:"vuln_new_sms" gorm:"default:false"`
+	VulnAssignedEmail bool `json:"vuln_assigned_email" gorm:"default:true"`
+	VulnAssignedPush  bool `json:"vuln_assigned_push" gorm:"default:true"`
+	VulnAssignedSMS   bool `json:"vuln_assigned_sms" gorm:"default:true"`
+	VulnFixedEmail    bool `json:"vuln_fixed_email" gorm:"default:true"`
+	VulnFixedPush     bool `json:"vuln_fixed_push" gorm:"default:false"`
+	VulnFixedSMS      bool `json:"vuln_fixed_sms" gorm:"default:false"`
 
 	// 报告相关通知
 	ReportEmail bool `json:"report_email" gorm:"default:true"`
@@ -272,31 +285,33 @@ func (NotificationSettings) TableName() string {
 
 // NotificationSettingsRequest 通知设置请求
 type NotificationSettingsRequest struct {
-	VulnNewEmail       *bool `json:"vuln_new_email"`
-	VulnNewPush        *bool `json:"vuln_new_push"`
-	VulnNewSMS         *bool `json:"vuln_new_sms"`
-	VulnAssignedEmail  *bool `json:"vuln_assigned_email"`
-	VulnAssignedPush   *bool `json:"vuln_assigned_push"`
-	VulnAssignedSMS    *bool `json:"vuln_assigned_sms"`
-	VulnFixedEmail     *bool `json:"vuln_fixed_email"`
-	VulnFixedPush      *bool `json:"vuln_fixed_push"`
-	VulnFixedSMS       *bool `json:"vuln_fixed_sms"`
-	ReportEmail        *bool `json:"report_email"`
-	ReportPush         *bool `json:"report_push"`
-	ReportSMS          *bool `json:"report_sms"`
-	SystemEmail        *bool `json:"system_email"`
-	SystemPush         *bool `json:"system_push"`
-	SystemSMS          *bool `json:"system_sms"`
-	SocialEmail        *bool `json:"social_email"`
-	SocialPush         *bool `json:"social_push"`
-	SocialSMS          *bool `json:"social_sms"`
+	VulnNewEmail      *bool `json:"vuln_new_email"`
+	VulnNewPush       *bool `json:"vuln_new_push"`
+	VulnNewSMS        *bool `json:"vuln_new_sms"`
+	VulnAssignedEmail *bool `json:"vuln_assigned_email"`
+	VulnAssignedPush  *bool `json:"vuln_assigned_push"`
+	VulnAssignedSMS   *bool `json:"vuln_assigned_sms"`
+	VulnFixedEmail    *bool `json:"vuln_fixed_email"`
+	VulnFixedPush     *bool `json:"vuln_fixed_push"`
+	VulnFixedSMS      *bool `json:"vuln_fixed_sms"`
+	ReportEmail       *bool `json:"report_email"`
+	ReportPush        *bool `json:"report_push"`
+	ReportSMS         *bool `json:"report_sms"`
+	SystemEmail       *bool `json:"system_email"`
+	SystemPush        *bool `json:"system_push"`
+	SystemSMS         *bool `json:"system_sms"`
+	SocialEmail       *bool `json:"social_email"`
+	SocialPush        *bool `json:"social_push"`
+	SocialSMS         *bool `json:"social_sms"`
 }
 
 // TwoFactorSetupResponse 双因素认证设置响应
 type TwoFactorSetupResponse struct {
-	QRCodeURL   string   `json:"qr_code_url"`
-	Secret      string   `json:"secret"`
-	BackupCodes []string `json:"backup_codes"`
+	QRCodeURL     string    `json:"qr_code_url"`
+	QRCodeDataURL string    `json:"qr_code_data_url"`
+	OTPAuthURL    string    `json:"otpauth_url"`
+	Secret        string    `json:"secret"`
+	ExpiresAt     time.Time `json:"expires_at"`
 }
 
 // TwoFactorVerifyRequest 双因素认证验证请求
@@ -306,5 +321,22 @@ type TwoFactorVerifyRequest struct {
 
 // TwoFactorStatusResponse 双因素认证状态响应
 type TwoFactorStatusResponse struct {
-	Enabled bool `json:"enabled"`
+	Enabled                bool `json:"enabled"`
+	Pending                bool `json:"pending"`
+	NeedsRebind            bool `json:"needs_rebind"`
+	RecoveryCodesRemaining int  `json:"recovery_codes_remaining"`
 }
+
+// MFAChallenge is a short-lived, one-time login challenge for second-factor verification.
+type MFAChallenge struct {
+	ID           string     `json:"id" gorm:"primaryKey;size:64"`
+	UserID       uint       `json:"user_id" gorm:"not null;index"`
+	TokenHash    string     `json:"-" gorm:"size:64;not null;uniqueIndex"`
+	TokenVersion uint64     `json:"-" gorm:"not null"`
+	ExpiresAt    time.Time  `json:"expires_at" gorm:"not null;index"`
+	Attempts     int        `json:"attempts" gorm:"not null;default:0"`
+	ConsumedAt   *time.Time `json:"consumed_at"`
+	CreatedAt    time.Time  `json:"created_at"`
+}
+
+func (MFAChallenge) TableName() string { return "mfa_challenges" }

@@ -9,7 +9,8 @@ type AIConfiguration struct {
 	ID          uint      `json:"id" gorm:"primaryKey"`
 	UserID      uint      `json:"user_id" gorm:"not null;index"`
 	Provider    string    `json:"provider" gorm:"size:50;not null;default:'openai'"`
-	APIKey      string    `json:"api_key" gorm:"size:500"`
+	APIKey      string    `json:"-" gorm:"size:500"`
+	HasAPIKey   bool      `json:"has_api_key" gorm:"-"`
 	APIURL      string    `json:"api_url" gorm:"size:255"`
 	Model       string    `json:"model" gorm:"size:100"`
 	MaxTokens   int       `json:"max_tokens" gorm:"default:2000"`
@@ -18,30 +19,33 @@ type AIConfiguration struct {
 	Enabled     bool      `json:"enabled" gorm:"default:false"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
-	
+
 	// 关联用户
 	User User `json:"user" gorm:"foreignKey:UserID"`
 }
 
 // AIConversation AI对话记录
 type AIConversation struct {
-	ID          uint      `json:"id" gorm:"primaryKey"`
-	UserID      uint      `json:"user_id" gorm:"not null;index"`
-	SessionID   string    `json:"session_id" gorm:"size:100;not null;index"`
-	Title       string    `json:"title" gorm:"size:255"`
-	Messages    string    `json:"messages" gorm:"type:longtext"` // JSON格式存储对话消息
-	TokensUsed  int       `json:"tokens_used" gorm:"default:0"`
-	Status      string    `json:"status" gorm:"size:20;default:'active'"` // active, archived, deleted
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	
+	ID         uint       `json:"id" gorm:"primaryKey"`
+	UserID     uint       `json:"user_id" gorm:"not null;index;uniqueIndex:idx_ai_user_session"`
+	SessionID  string     `json:"session_id" gorm:"size:100;not null;index;uniqueIndex:idx_ai_user_session"`
+	Title      string     `json:"title" gorm:"size:255"`
+	Messages   string     `json:"messages" gorm:"type:longtext"` // JSON格式存储对话消息
+	TokensUsed int        `json:"tokens_used" gorm:"default:0"`
+	Status     string     `json:"status" gorm:"size:20;default:'active'"` // active, archived, deleted
+	Version    uint64     `json:"-" gorm:"not null;default:0"`
+	LeaseToken string     `json:"-" gorm:"size:64;not null;default:''"`
+	LeaseUntil *time.Time `json:"-" gorm:"index"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+
 	// 关联用户
 	User User `json:"user" gorm:"foreignKey:UserID"`
 }
 
 // AIMessage AI消息结构
 type AIMessage struct {
-	Role      string    `json:"role"`      // user, assistant, system
+	Role      string    `json:"role"` // user, assistant, system
 	Content   string    `json:"content"`
 	Timestamp time.Time `json:"timestamp"`
 	Tokens    int       `json:"tokens,omitempty"`
@@ -104,6 +108,7 @@ func GetSupportedProviders() []AIProvider {
 type AIConfigurationRequest struct {
 	Provider    string  `json:"provider" binding:"required"`
 	APIKey      string  `json:"api_key"`
+	ClearAPIKey bool    `json:"clear_api_key"`
 	APIURL      string  `json:"api_url"`
 	Model       string  `json:"model"`
 	MaxTokens   int     `json:"max_tokens"`
@@ -114,11 +119,11 @@ type AIConfigurationRequest struct {
 
 // AITestRequest AI连接测试请求
 type AITestRequest struct {
-	Provider    string  `json:"provider" binding:"required"`
-	APIKey      string  `json:"api_key" binding:"required"`
-	APIURL      string  `json:"api_url"`
-	Model       string  `json:"model"`
-	TestMessage string  `json:"test_message"`
+	Provider    string `json:"provider" binding:"required"`
+	APIKey      string `json:"api_key" binding:"required"`
+	APIURL      string `json:"api_url"`
+	Model       string `json:"model"`
+	TestMessage string `json:"test_message"`
 }
 
 // AIChatRequest AI聊天请求
@@ -130,9 +135,9 @@ type AIChatRequest struct {
 
 // AIChatResponse AI聊天响应
 type AIChatResponse struct {
-	SessionID   string `json:"session_id"`
-	Message     string `json:"message"`
-	TokensUsed  int    `json:"tokens_used"`
+	SessionID   string   `json:"session_id"`
+	Message     string   `json:"message"`
+	TokensUsed  int      `json:"tokens_used"`
 	Suggestions []string `json:"suggestions,omitempty"` // 建议的后续问题
 }
 

@@ -3,358 +3,250 @@ package router
 import (
 	"vulnark/internal/container"
 	"vulnark/internal/middleware"
+	"vulnark/pkg/auth"
 
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-// SetupRoutes 设置路由
+// SetupRoutes keeps authorization next to each operation rather than granting writes through read access.
 func SetupRoutes(r *gin.Engine, c *container.Container) {
-	// 使用依赖注入容器中的控制器实例
-	userController := c.UserController
-	assetController := c.AssetController
-	vulnController := c.VulnController
-	roleController := c.RoleController
-	assignmentController := c.AssignmentController
-	reportController := c.ReportController
-	notificationController := c.NotificationController
-	permissionController := c.PermissionController
-	systemController := c.SystemController
-	knowledgeController := c.KnowledgeController
-	analyticsController := c.AnalyticsController
-	apiTestController := c.APITestController
-	apiVersionController := c.APIVersionController
-	settingsController := c.SettingsController
-	aiController := c.AIController
-
-	// 辅助函数简化权限中间件调用
-	requirePermission := func(permission string) gin.HandlerFunc {
-		return middleware.RequirePermission(permission, c.PermissionService)
+	permit := func(name string) gin.HandlerFunc {
+		return middleware.RequirePermission(name, c.PermissionService)
 	}
-
-	// 全局中间件
-	r.Use(middleware.GlobalRateLimit()) // 全局速率限制
-
-	// Swagger API文档
+	any := func(names ...string) gin.HandlerFunc {
+		return middleware.RequireAnyPermission(names, c.PermissionService)
+	}
+	u, v, a := c.UserController, c.VulnController, c.AssetController
+	p, k, n := c.PermissionController, c.KnowledgeController, c.NotificationController
+	report, assignment := c.ReportController, c.AssignmentController
+	r.Use(middleware.GlobalRateLimit())
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	r.GET("/api/versions", c.APIVersionController.GetAPIVersions)
+	r.GET("/api/versions/compatibility", c.APIVersionController.GetCompatibility)
+	r.GET("/api/versions/:version", c.APIVersionController.GetVersionDetails)
+	r.GET("/api/health", c.APIVersionController.GetAPIHealth)
+	r.GET("/api/status", c.APIVersionController.GetAPIStatus)
+	r.GET("/api/changelog", c.APIVersionController.GetAPIChangelog)
 
-	// API版本管理（公开接口）
-	r.GET("/api/versions", apiVersionController.GetAPIVersions)
-	r.GET("/api/versions/:version", apiVersionController.GetVersionDetails)
-	r.GET("/api/versions/compatibility", apiVersionController.GetCompatibility)
-	r.GET("/api/health", apiVersionController.GetAPIHealth)
-	r.GET("/api/status", apiVersionController.GetAPIStatus)
-	r.GET("/api/changelog", apiVersionController.GetAPIChangelog)
-	r.GET("/api/metrics", apiVersionController.GetAPIMetrics)
-
-	// API路由组
 	api := r.Group("/api/v1")
-	{
-		// 公开接口（不需要认证）
-		public := api.Group("/public")
-		{
-			public.GET("/ping", func(c *gin.Context) {
-				c.JSON(200, gin.H{"message": "pong"})
-			})
-			public.GET("/configs", systemController.GetPublicConfigs)
-			public.GET("/system/info", systemController.GetSystemInfo)
-			public.GET("/client-config", systemController.GetClientConfig)
-		}
+	api.GET("/public/ping", func(ctx *gin.Context) { ctx.JSON(200, gin.H{"message": "pong"}) })
+	api.GET("/public/configs", c.SystemController.GetPublicConfigs)
+	api.GET("/public/system/info", c.SystemController.GetSystemInfo)
+	api.GET("/public/client-config", c.SystemController.GetClientConfig)
+	api.POST("/login", middleware.LoginRateLimit(), u.Login)
 
-		// 认证接口（添加登录速率限制）
-		api.POST("/login", middleware.LoginRateLimit(), userController.Login)
+	secured := api.Group("")
+	secured.Use(middleware.AuthMiddleware(c.UserRepo))
+	secured.GET("/profile", u.GetProfile)
+	secured.PUT("/profile", u.UpdateProfile)
+	secured.POST("/change-password", middleware.UserBasedRateLimit(1, 3), u.ChangePassword)
+	secured.POST("/logout", u.RevokeAllSessions)
+	secured.POST("/revoke-all", u.RevokeAllSessions)
+	secured.GET("/metrics", permit("system:audit"), c.APIVersionController.GetAPIMetrics)
 
-		// 需要认证的接口
-		auth := api.Group("/")
-		auth.Use(middleware.AuthMiddleware())
-		{
-			// 用户个人资料
-			auth.GET("/profile", userController.GetProfile)
-			auth.PUT("/profile", userController.UpdateProfile)
-			auth.POST("/change-password", userController.ChangePassword)
+	users := secured.Group("/users", permit("user:manage"))
+	users.GET("/departments", u.GetDepartmentOptions)
+	users.POST("", u.CreateUser)
+	users.GET("", u.GetUserList)
+	users.GET("/:id", u.GetUser)
+	users.PUT("/:id", u.UpdateUser)
+	users.DELETE("/:id", u.DeleteUser)
+	secured.GET("/roles/options", permit("user:manage"), c.RoleController.GetRoleOptions)
+	roles := secured.Group("/roles", permit("role:manage"))
+	roles.POST("", c.RoleController.CreateRole)
+	roles.GET("", c.RoleController.GetRoleList)
+	roles.GET("/:id", c.RoleController.GetRole)
+	roles.PUT("/:id", c.RoleController.UpdateRole)
+	roles.DELETE("/:id", c.RoleController.DeleteRole)
 
-			// 用户管理（需要管理员权限）
-			users := auth.Group("/users")
-			users.Use(requirePermission("user:manage"))
-			{
-				users.GET("/departments", userController.GetDepartmentOptions) // 部门选项
-				users.POST("", userController.CreateUser)
-				users.GET("", userController.GetUserList)
-				users.GET("/:id", userController.GetUser)
-				users.PUT("/:id", userController.UpdateUser)
-				users.DELETE("/:id", userController.DeleteUser)
-			}
+	assets := secured.Group("/assets")
+	assets.GET("", permit("asset:read"), a.GetAssetList)
+	assets.GET("/stats", permit("asset:read"), a.GetAssetStats)
+	assets.GET("/types", any("asset:read", "asset:create", "asset:update"), a.GetAssetTypes)
+	assets.GET("/importance-levels", any("asset:read", "asset:create", "asset:update"), a.GetImportanceLevels)
+	assets.POST("", permit("asset:create"), a.CreateAsset)
+	assets.POST("/import", permit("asset:import"), middleware.UploadRateLimit(), a.ImportAssets)
+	assets.GET("/:id", permit("asset:read"), a.GetAsset)
+	assets.PUT("/:id", permit("asset:update"), a.UpdateAsset)
+	assets.DELETE("/:id", permit("asset:delete"), a.DeleteAsset)
 
-			// 角色选项（用于用户创建，需要用户管理权限）
-			auth.GET("/roles/options", requirePermission("user:manage"), roleController.GetRoleOptions)
+	vulns := secured.Group("/vulnerabilities")
+	vulns.GET("", permit("vuln:read"), v.GetVulnerabilityList)
+	vulns.GET("/stats", permit("vuln:read"), v.GetVulnerabilityStats)
+	vulns.GET("/sla/overdue", permit("vuln:read"), c.SLAController.ListOverdue)
+	vulns.GET("/duplicates/candidates", permit("vuln:read"), v.GetDuplicateCandidates)
+	vulns.GET("/assignee-options", any("vuln:read", "vuln:create", "vuln:update"), v.GetAssigneeOptions)
+	vulns.GET("/asset-options", any("vuln:read", "vuln:create", "vuln:update"), v.GetAssetOptions)
+	vulns.GET("/owasp-categories", any("vuln:read", "vuln:create", "vuln:update"), v.GetOWASPCategories)
+	vulns.GET("/severity-levels", any("vuln:read", "vuln:create", "vuln:update"), v.GetSeverityLevels)
+	vulns.GET("/status-list", any("vuln:read", "vuln:create", "vuln:update"), v.GetStatusList)
+	vulns.POST("", permit("vuln:create"), middleware.UploadRateLimit(), v.CreateVulnerability)
+	vulns.POST("/batch-assign", permit("vuln:assign"), assignment.BatchAssignVulnerabilities)
+	vulns.POST("/auto-assign", permit("vuln:assign"), assignment.AutoAssignVulnerabilities)
+	vulns.GET("/:id", permit("vuln:read"), v.GetVulnerability)
+	vulns.PUT("/:id", permit("vuln:update"), v.UpdateVulnerability)
+	vulns.DELETE("/:id", permit("vuln:delete"), v.DeleteVulnerability)
+	vulns.PUT("/:id/status", permit("vuln:update"), v.UpdateVulnerabilityStatus)
+	vulns.POST("/:id/assign", permit("vuln:assign"), assignment.AssignVulnerability)
+	vulns.GET("/:id/timeline", permit("vuln:read"), assignment.GetVulnerabilityTimeline)
+	vulns.GET("/:id/duplicates", permit("vuln:read"), v.GetDuplicateRelations)
+	vulns.POST("/:id/duplicates/:candidate_id/ignore", permit("vuln:read"), permit("vuln:update"), v.IgnoreDuplicate)
+	vulns.DELETE("/:id/duplicates/:candidate_id/ignore", permit("vuln:read"), permit("vuln:update"), v.RestoreDuplicateIgnore)
+	vulns.POST("/:id/duplicates/:candidate_id/link", permit("vuln:read"), permit("vuln:update"), v.LinkDuplicate)
+	vulns.DELETE("/:id/duplicates/:candidate_id/link", permit("vuln:read"), permit("vuln:update"), v.UnlinkDuplicate)
+	vulns.GET("/:id/retests", permit("vuln:read"), c.RetestController.ListRetests)
+	vulns.GET("/:id/retests/:retest_id/evidence/:index/download", permit("vuln:read"), c.RetestController.DownloadEvidence)
+	vulns.POST("/:id/retest", permit("vuln:read"), permit("vuln:verify"), middleware.UploadRateLimit(), c.RetestController.CreateRetest)
+	vulns.GET("/:id/sla", permit("vuln:read"), c.SLAController.GetState)
+	vulns.POST("/:id/sla/pause", permit("vuln:read"), permit("sla:manage"), c.SLAController.Pause)
+	vulns.POST("/:id/sla/resume", permit("vuln:read"), permit("sla:manage"), c.SLAController.Resume)
+	vulns.GET("/:id/attachments/:attachment_id/preview", permit("vuln:read"), v.PreviewAttachment)
+	vulns.GET("/:id/attachments/:attachment_id/download", permit("vuln:read"), v.DownloadAttachment)
+	rules := secured.Group("/assignment-rules", permit("vuln:manage"))
+	rules.POST("", assignment.CreateAssignmentRule)
+	rules.GET("", assignment.GetAssignmentRuleList)
+	rules.GET("/types", assignment.GetRuleTypes)
+	rules.GET("/:id", assignment.GetAssignmentRule)
+	rules.PUT("/:id", assignment.UpdateAssignmentRule)
+	rules.DELETE("/:id", assignment.DeleteAssignmentRule)
+	secured.GET("/assignments/stats", permit("vuln:read"), assignment.GetAssignmentStats)
+	slaPolicies := secured.Group("/sla-policies", permit("sla:manage"))
+	slaPolicies.GET("", c.SLAController.ListPolicies)
+	slaPolicies.POST("", c.SLAController.CreatePolicy)
+	slaPolicies.GET("/:id", c.SLAController.GetPolicy)
+	slaPolicies.PUT("/:id", c.SLAController.UpdatePolicy)
+	slaPolicies.DELETE("/:id", c.SLAController.DeletePolicy)
 
-			// 角色管理（需要管理员权限）
-			roles := auth.Group("/roles")
-			roles.Use(requirePermission("role:manage"))
-			{
-				roles.POST("", roleController.CreateRole)
-				roles.GET("", roleController.GetRoleList)
-				roles.GET("/:id", roleController.GetRole)
-				roles.PUT("/:id", roleController.UpdateRole)
-				roles.DELETE("/:id", roleController.DeleteRole)
-			}
+	reports := secured.Group("/reports")
+	reports.POST("", permit("report:create"), middleware.UploadRateLimit(), report.UploadReport)
+	reports.GET("", permit("report:read"), report.GetReportList)
+	reports.GET("/stats", permit("report:read"), report.GetReportStats)
+	reports.GET("/:id", permit("report:read"), report.GetReport)
+	reports.GET("/:id/content", permit("report:read"), report.GetReportContent)
+	reports.GET("/:id/download", permit("report:read"), report.DownloadReport)
+	reports.GET("/:id/download-url", permit("report:read"), report.GetReportDownloadURL)
+	reports.PUT("/:id", permit("report:update"), report.UpdateReport)
+	reports.DELETE("/:id", permit("report:delete"), report.DeleteReport)
+	reports.POST("/:id/submit", permit("report:update"), report.SubmitReport)
+	reports.POST("/:id/review", permit("report:review"), report.ReviewReport)
+	reports.POST("/:id/archive", permit("report:update"), report.ArchiveReport)
 
-			// 资产管理
-			assets := auth.Group("/assets")
-			assets.Use(requirePermission("asset:read")) // 基础权限检查
-			{
-				assets.POST("", assetController.CreateAsset)
-				assets.GET("", assetController.GetAssetList)
-				assets.GET("/stats", assetController.GetAssetStats)
-				assets.GET("/types", assetController.GetAssetTypes)
-				assets.GET("/importance-levels", assetController.GetImportanceLevels)
-				assets.POST("/import", assetController.ImportAssets)
-				assets.GET("/:id", assetController.GetAsset)
-				assets.PUT("/:id", assetController.UpdateAsset)
-				assets.DELETE("/:id", assetController.DeleteAsset)
-			}
+	notifications := secured.Group("/notifications")
+	notifications.POST("", permit("notification:create"), n.CreateNotification)
+	notifications.GET("", permit("notification:manage"), n.GetNotificationList)
+	notifications.GET("/my", n.GetMyNotifications)
+	notifications.GET("/stats", n.GetNotificationStats)
+	notifications.GET("/settings", n.GetNotificationSetting)
+	notifications.PUT("/settings", n.UpdateNotificationSetting)
+	notifications.POST("/read-all", n.MarkAllAsRead)
+	notifications.POST("/email", permit("email:manage"), n.SendEmail)
+	notifications.GET("/:id", n.GetNotification)
+	notifications.POST("/:id/read", n.MarkAsRead)
+	notifications.DELETE("/:id", n.DeleteNotification)
+	email := secured.Group("/email-templates", permit("email:manage"))
+	email.POST("", n.CreateEmailTemplate)
+	email.GET("", n.GetEmailTemplateList)
+	email.GET("/:id", n.GetEmailTemplate)
+	email.PUT("/:id", n.UpdateEmailTemplate)
+	email.DELETE("/:id", n.DeleteEmailTemplate)
 
-			// 漏洞管理
-			vulnerabilities := auth.Group("/vulnerabilities")
-			vulnerabilities.Use(requirePermission("vuln:read")) // 基础权限检查
-			{
-				vulnerabilities.POST("", vulnController.CreateVulnerability)
-				vulnerabilities.GET("", vulnController.GetVulnerabilityList)
-				vulnerabilities.GET("/stats", vulnController.GetVulnerabilityStats)
-				vulnerabilities.GET("/owasp-categories", vulnController.GetOWASPCategories)
-				vulnerabilities.GET("/severity-levels", vulnController.GetSeverityLevels)
-				vulnerabilities.GET("/status-list", vulnController.GetStatusList)
-				vulnerabilities.POST("/batch-assign", assignmentController.BatchAssignVulnerabilities)
-				vulnerabilities.POST("/auto-assign", assignmentController.AutoAssignVulnerabilities)
-				vulnerabilities.GET("/:id", vulnController.GetVulnerability)
-				vulnerabilities.PUT("/:id", vulnController.UpdateVulnerability)
-				vulnerabilities.DELETE("/:id", vulnController.DeleteVulnerability)
-				vulnerabilities.PUT("/:id/status", vulnController.UpdateVulnerabilityStatus)
-				vulnerabilities.POST("/:id/assign", assignmentController.AssignVulnerability)
-				vulnerabilities.GET("/:id/timeline", assignmentController.GetVulnerabilityTimeline)
-			}
+	permissions := secured.Group("/permissions")
+	permissions.GET("/my", p.GetMyPermissions)
+	permissions.GET("/check", p.CheckPermission)
+	permissions.POST("", permit("system:permission"), p.CreatePermission)
+	permissions.GET("", permit("system:permission"), p.GetPermissionList)
+	permissions.GET("/module/:module", permit("system:permission"), p.GetPermissionsByModule)
+	permissions.GET("/:id", permit("system:permission"), p.GetPermission)
+	permissions.PUT("/:id", permit("system:permission"), p.UpdatePermission)
+	permissions.DELETE("/:id", permit("system:permission"), p.DeletePermission)
+	secured.POST("/role-permissions/:role_id", permit("system:permission"), p.AssignRolePermissions)
+	secured.GET("/role-permissions/:role_id", permit("system:permission"), p.GetRolePermissions)
+	system := secured.Group("/system")
+	system.GET("/configs", permit("system:config"), c.SystemController.GetSystemConfigs)
+	system.GET("/configs/category/:category", permit("system:config"), c.SystemController.GetConfigsByCategory)
+	system.GET("/configs/:key", permit("system:config"), c.SystemController.GetSystemConfig)
+	system.PUT("/configs/:key", permit("system:config"), c.SystemController.UpdateSystemConfig)
+	system.GET("/audit-logs", permit("system:audit"), c.SystemController.GetAuditLogs)
+	system.GET("/audit-logs/stats", permit("system:audit"), c.SystemController.GetAuditLogStats)
+	system.GET("/audit-logs/:id", permit("system:audit"), c.SystemController.GetAuditLog)
+	system.POST("/audit-logs/cleanup", permit("system:audit"), c.SystemController.CleanupAuditLogs)
 
-			// 分配规则管理
-			assignmentRules := auth.Group("/assignment-rules")
-			assignmentRules.Use(requirePermission("vuln:manage")) // 分配权限检查
-			{
-				assignmentRules.POST("", assignmentController.CreateAssignmentRule)
-				assignmentRules.GET("", assignmentController.GetAssignmentRuleList)
-				assignmentRules.GET("/types", assignmentController.GetRuleTypes)
-				assignmentRules.GET("/:id", assignmentController.GetAssignmentRule)
-				assignmentRules.PUT("/:id", assignmentController.UpdateAssignmentRule)
-				assignmentRules.DELETE("/:id", assignmentController.DeleteAssignmentRule)
-			}
+	knowledge := secured.Group("/knowledge")
+	knowledge.POST("", permit("knowledge:create"), k.CreateKnowledge)
+	knowledge.GET("", permit("knowledge:read"), k.GetKnowledgeList)
+	knowledge.GET("/stats", permit("knowledge:read"), k.GetKnowledgeStats)
+	knowledge.GET("/search", permit("knowledge:read"), k.SearchKnowledge)
+	knowledge.GET("/popular", permit("knowledge:read"), k.GetPopularKnowledge)
+	knowledge.GET("/recent", permit("knowledge:read"), k.GetRecentKnowledge)
+	knowledge.GET("/:id", permit("knowledge:read"), k.GetKnowledge)
+	knowledge.PUT("/:id", permit("knowledge:update"), k.UpdateKnowledge)
+	knowledge.DELETE("/:id", permit("knowledge:delete"), k.DeleteKnowledge)
+	knowledge.POST("/:id/like", permit("knowledge:read"), k.LikeKnowledge)
+	knowledge.POST("/:id/publish", permit("knowledge:update"), k.PublishKnowledge)
+	knowledge.POST("/:id/archive", permit("knowledge:update"), k.ArchiveKnowledge)
+	knowledge.GET("/:id/related", permit("knowledge:read"), k.GetRelatedKnowledge)
+	tags := secured.Group("/tags")
+	tags.GET("", permit("knowledge:read"), k.GetTagList)
+	tags.GET("/popular", permit("knowledge:read"), k.GetPopularTags)
+	tags.GET("/:id", permit("knowledge:read"), k.GetTag)
+	tags.POST("", permit("tag:manage"), k.CreateTag)
+	tags.PUT("/:id", permit("tag:manage"), k.UpdateTag)
+	tags.DELETE("/:id", permit("tag:manage"), k.DeleteTag)
+	templates := secured.Group("/templates")
+	templates.GET("", permit("knowledge:read"), k.GetTemplateList)
+	templates.GET("/:id", permit("knowledge:read"), k.GetTemplate)
+	templates.POST("/:id/use", permit("knowledge:read"), k.UseTemplate)
+	templates.POST("", permit("template:manage"), k.CreateTemplate)
+	templates.PUT("/:id", permit("template:manage"), k.UpdateTemplate)
+	templates.DELETE("/:id", permit("template:manage"), k.DeleteTemplate)
 
-			// 分配统计
-			assignments := auth.Group("/assignments")
-			{
-				assignments.GET("/stats", assignmentController.GetAssignmentStats)
-			}
+	analytics := secured.Group("/analytics", permit("analytics:read"))
+	analytics.GET("/dashboard", c.AnalyticsController.GetDashboardStats)
+	analytics.GET("/overview", c.AnalyticsController.GetSystemOverview)
+	analytics.GET("/vulnerability", c.AnalyticsController.GetVulnerabilityAnalytics)
+	analytics.GET("/vulnerability/trend", c.AnalyticsController.GetVulnerabilityTrend)
+	analytics.GET("/vulnerability/severity-trend", c.AnalyticsController.GetSeverityTrend)
+	analytics.GET("/vulnerability/monthly-trends", c.AnalyticsController.GetMonthlyVulnerabilityTrends)
+	analytics.GET("/asset", c.AnalyticsController.GetAssetAnalytics)
+	analytics.GET("/asset/risk", c.AnalyticsController.GetAssetRiskAssessment)
+	analytics.GET("/report", c.AnalyticsController.GetReportAnalytics)
+	analytics.GET("/user", permit("user:manage"), c.AnalyticsController.GetUserAnalytics)
+	analytics.POST("/export", permit("analytics:export"), c.AnalyticsController.ExportData)
+	analytics.GET("/export", permit("analytics:export"), c.AnalyticsController.DownloadExport)
+	apiTest := secured.Group("/api-test", permit("api:test"), middleware.APIRateLimit())
+	apiTest.POST("/test", c.APITestController.TestAPI)
+	apiTest.GET("/endpoints", c.APITestController.GetAPIEndpoints)
+	apiTest.POST("/token", c.APITestController.GenerateAPIToken)
+	apiTest.GET("/docs", c.APITestController.GetAPIDocumentation)
+	apiTest.POST("/validate", c.APITestController.ValidateAPIRequest)
 
-			// 报告管理
-			reports := auth.Group("/reports")
-			// reports.Use(middleware.RequirePermission("report:manage")) // TODO: 实现权限中间件
-			{
-				reports.POST("", reportController.UploadReport)
-				reports.GET("", reportController.GetReportList)
-				reports.GET("/stats", reportController.GetReportStats)
-				reports.GET("/:id", reportController.GetReport)
-				reports.GET("/:id/content", reportController.GetReportContent)
-				reports.PUT("/:id", reportController.UpdateReport)
-				reports.DELETE("/:id", reportController.DeleteReport)
-				reports.POST("/:id/submit", reportController.SubmitReport)
-				reports.POST("/:id/review", reportController.ReviewReport)
-				reports.POST("/:id/archive", reportController.ArchiveReport)
-				reports.GET("/:id/download", reportController.DownloadReport)
-			}
+	settings := secured.Group("/settings")
+	settings.PUT("/profile", c.SettingsController.UpdateProfile)
+	settings.PUT("/password", middleware.UserBasedRateLimit(1, 3), c.SettingsController.ChangePassword)
+	settings.DELETE("/2fa", middleware.UserBasedRateLimit(1, 3), c.SettingsController.Disable2FA)
+	settings.GET("/system", c.SettingsController.GetSystemSettings)
+	settings.PUT("/system", c.SettingsController.UpdateSystemSettings)
+	settings.GET("/notifications", c.SettingsController.GetNotificationSettings)
+	settings.PUT("/notifications", c.SettingsController.UpdateNotificationSettings)
+	settings.GET("/export", c.SettingsController.ExportData)
+	settings.POST("/import", middleware.UploadRateLimit(), c.SettingsController.ImportData)
+	settings.POST("/cache/clear", permit("system:config"), c.SettingsController.ClearCache)
+	settings.POST("/database/optimize", permit("system:config"), c.SettingsController.OptimizeDatabase)
+	mfa := api.Group("/settings/2fa", middleware.MFARebindMiddleware(c.UserRepo, auth.NewJWTManager()), middleware.LoginRateLimit())
+	mfa.POST("/setup", c.SettingsController.Setup2FA)
+	mfa.POST("/verify", c.SettingsController.Verify2FA)
+	mfa.GET("/status", c.SettingsController.Get2FAStatus)
 
-			// 通知管理
-			notifications := auth.Group("/notifications")
-			// notifications.Use(middleware.RequirePermission("notification:manage")) // TODO: 实现权限中间件
-			{
-				notifications.POST("", notificationController.CreateNotification)
-				notifications.GET("", notificationController.GetNotificationList)
-				notifications.GET("/my", notificationController.GetMyNotifications)
-				notifications.GET("/stats", notificationController.GetNotificationStats)
-				notifications.GET("/settings", notificationController.GetNotificationSetting)
-				notifications.PUT("/settings", notificationController.UpdateNotificationSetting)
-				notifications.POST("/read-all", notificationController.MarkAllAsRead)
-				notifications.POST("/email", notificationController.SendEmail)
-				notifications.GET("/:id", notificationController.GetNotification)
-				notifications.POST("/:id/read", notificationController.MarkAsRead)
-				notifications.DELETE("/:id", notificationController.DeleteNotification)
-			}
-
-			// 邮件模板管理
-			emailTemplates := auth.Group("/email-templates")
-			// emailTemplates.Use(middleware.RequirePermission("email:manage")) // TODO: 实现权限中间件
-			{
-				emailTemplates.POST("", notificationController.CreateEmailTemplate)
-				emailTemplates.GET("", notificationController.GetEmailTemplateList)
-				emailTemplates.GET("/:id", notificationController.GetEmailTemplate)
-				emailTemplates.PUT("/:id", notificationController.UpdateEmailTemplate)
-				emailTemplates.DELETE("/:id", notificationController.DeleteEmailTemplate)
-			}
-
-			// 权限管理
-			permissions := auth.Group("/permissions")
-			// permissions.Use(middleware.RequirePermission("system:permission")) // TODO: 实现权限中间件
-			{
-				permissions.POST("", permissionController.CreatePermission)
-				permissions.GET("", permissionController.GetPermissionList)
-				permissions.GET("/my", permissionController.GetMyPermissions)
-				permissions.GET("/check", permissionController.CheckPermission)
-				permissions.GET("/module/:module", permissionController.GetPermissionsByModule)
-				permissions.GET("/:id", permissionController.GetPermission)
-				permissions.PUT("/:id", permissionController.UpdatePermission)
-				permissions.DELETE("/:id", permissionController.DeletePermission)
-			}
-
-			// 角色权限管理
-			rolePermissions := auth.Group("/role-permissions")
-			{
-				rolePermissions.POST("/:role_id", permissionController.AssignRolePermissions)
-				rolePermissions.GET("/:role_id", permissionController.GetRolePermissions)
-			}
-
-			// 系统管理
-			system := auth.Group("/system")
-			// system.Use(middleware.RequirePermission("system:config")) // TODO: 实现权限中间件
-			{
-				system.GET("/configs", systemController.GetSystemConfigs)
-				system.GET("/configs/category/:category", systemController.GetConfigsByCategory)
-				system.GET("/configs/:key", systemController.GetSystemConfig)
-				system.PUT("/configs/:key", systemController.UpdateSystemConfig)
-
-				system.GET("/audit-logs", systemController.GetAuditLogs)
-				system.GET("/audit-logs/stats", systemController.GetAuditLogStats)
-				system.GET("/audit-logs/:id", systemController.GetAuditLog)
-				system.POST("/audit-logs/cleanup", systemController.CleanupAuditLogs)
-			}
-
-			// 知识库管理
-			knowledge := auth.Group("/knowledge")
-			// knowledge.Use(middleware.RequirePermission("knowledge:read")) // TODO: 实现权限中间件
-			{
-				knowledge.POST("", knowledgeController.CreateKnowledge)
-				knowledge.GET("", knowledgeController.GetKnowledgeList)
-				knowledge.GET("/stats", knowledgeController.GetKnowledgeStats)
-				knowledge.GET("/search", knowledgeController.SearchKnowledge)
-				knowledge.GET("/popular", knowledgeController.GetPopularKnowledge)
-				knowledge.GET("/recent", knowledgeController.GetRecentKnowledge)
-				knowledge.GET("/:id", knowledgeController.GetKnowledge)
-				knowledge.PUT("/:id", knowledgeController.UpdateKnowledge)
-				knowledge.DELETE("/:id", knowledgeController.DeleteKnowledge)
-				knowledge.POST("/:id/like", knowledgeController.LikeKnowledge)
-				knowledge.POST("/:id/publish", knowledgeController.PublishKnowledge)
-				knowledge.POST("/:id/archive", knowledgeController.ArchiveKnowledge)
-				knowledge.GET("/:id/related", knowledgeController.GetRelatedKnowledge)
-			}
-
-			// 标签管理
-			tags := auth.Group("/tags")
-			// tags.Use(middleware.RequirePermission("tag:manage")) // TODO: 实现权限中间件
-			{
-				tags.POST("", knowledgeController.CreateTag)
-				tags.GET("", knowledgeController.GetTagList)
-				tags.GET("/popular", knowledgeController.GetPopularTags)
-				tags.GET("/:id", knowledgeController.GetTag)
-				tags.PUT("/:id", knowledgeController.UpdateTag)
-				tags.DELETE("/:id", knowledgeController.DeleteTag)
-			}
-
-			// 模板管理
-			templates := auth.Group("/templates")
-			// templates.Use(middleware.RequirePermission("template:manage")) // TODO: 实现权限中间件
-			{
-				templates.POST("", knowledgeController.CreateTemplate)
-				templates.GET("", knowledgeController.GetTemplateList)
-				templates.GET("/:id", knowledgeController.GetTemplate)
-				templates.PUT("/:id", knowledgeController.UpdateTemplate)
-				templates.DELETE("/:id", knowledgeController.DeleteTemplate)
-				templates.POST("/:id/use", knowledgeController.UseTemplate)
-			}
-
-			// 统计分析
-			analytics := auth.Group("/analytics")
-			// analytics.Use(middleware.RequirePermission("analytics:read")) // TODO: 实现权限中间件
-			{
-				analytics.GET("/dashboard", analyticsController.GetDashboardStats)
-				analytics.GET("/overview", analyticsController.GetSystemOverview)
-				analytics.GET("/vulnerability", analyticsController.GetVulnerabilityAnalytics)
-				analytics.GET("/vulnerability/trend", analyticsController.GetVulnerabilityTrend)
-				analytics.GET("/vulnerability/severity-trend", analyticsController.GetSeverityTrend)
-				analytics.GET("/vulnerability/monthly-trends", analyticsController.GetMonthlyVulnerabilityTrends)
-				analytics.GET("/asset", analyticsController.GetAssetAnalytics)
-				analytics.GET("/asset/risk", analyticsController.GetAssetRiskAssessment)
-				analytics.GET("/report", analyticsController.GetReportAnalytics)
-				analytics.GET("/user", analyticsController.GetUserAnalytics)
-				analytics.POST("/export", analyticsController.ExportData)
-			}
-
-			// API测试工具
-			apiTest := auth.Group("/api-test")
-			apiTest.Use(requirePermission("api:test"))
-			apiTest.Use(middleware.APIRateLimit()) // API测试速率限制
-			{
-				apiTest.POST("/test", apiTestController.TestAPI)
-				apiTest.GET("/endpoints", apiTestController.GetAPIEndpoints)
-				apiTest.POST("/token", apiTestController.GenerateAPIToken)
-				apiTest.GET("/docs", apiTestController.GetAPIDocumentation)
-				apiTest.POST("/validate", apiTestController.ValidateAPIRequest)
-			}
-
-			// 设置管理
-			settings := auth.Group("/settings")
-			{
-				// 用户资料设置
-				settings.PUT("/profile", settingsController.UpdateProfile)
-				settings.PUT("/password", settingsController.ChangePassword)
-
-				// 双因素认证
-				settings.POST("/2fa/setup", settingsController.Setup2FA)
-				settings.POST("/2fa/verify", settingsController.Verify2FA)
-				settings.DELETE("/2fa", settingsController.Disable2FA)
-				settings.GET("/2fa/status", settingsController.Get2FAStatus)
-
-				// 系统设置
-				settings.GET("/system", settingsController.GetSystemSettings)
-				settings.PUT("/system", settingsController.UpdateSystemSettings)
-
-				// 通知设置
-				settings.GET("/notifications", settingsController.GetNotificationSettings)
-				settings.PUT("/notifications", settingsController.UpdateNotificationSettings)
-
-				// 数据管理
-				settings.GET("/export", settingsController.ExportData)
-				settings.POST("/import", settingsController.ImportData)
-				settings.POST("/cache/clear", settingsController.ClearCache)
-				settings.POST("/database/optimize", settingsController.OptimizeDatabase)
-			}
-
-			// AI助手管理
-			ai := auth.Group("/ai")
-			{
-				// AI配置管理
-				ai.GET("/config", aiController.GetAIConfiguration)
-				ai.POST("/config", aiController.SaveAIConfiguration)
-				ai.POST("/test", aiController.TestAIConnection)
-				ai.GET("/providers", aiController.GetSupportedProviders)
-
-				// AI对话管理
-				ai.POST("/conversation", aiController.StartConversation)
-				ai.POST("/chat", aiController.SendMessage)
-				ai.GET("/conversations", aiController.GetConversations)
-				ai.DELETE("/conversation/:session_id", aiController.DeleteConversation)
-
-				// AI使用统计
-				ai.GET("/stats", aiController.GetUsageStats)
-			}
-		}
-	}
-
-
-
+	ai := secured.Group("/ai")
+	ai.GET("/config", c.AIController.GetAIConfiguration)
+	ai.POST("/config", c.AIController.SaveAIConfiguration)
+	ai.POST("/test", middleware.UserBasedRateLimit(1, 3), c.AIController.TestAIConnection)
+	ai.GET("/providers", c.AIController.GetSupportedProviders)
+	ai.POST("/conversation", c.AIController.StartConversation)
+	ai.POST("/chat", c.AIController.SendMessage)
+	ai.GET("/conversations", c.AIController.GetConversations)
+	ai.DELETE("/conversation/:session_id", c.AIController.DeleteConversation)
+	ai.GET("/stats", c.AIController.GetUsageStats)
 }

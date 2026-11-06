@@ -1,8 +1,8 @@
 package service
 
 import (
+	"context"
 	"errors"
-	"strings"
 
 	"vulnark/internal/model"
 	"vulnark/internal/repository"
@@ -17,15 +17,15 @@ type PermissionService interface {
 	DeletePermission(id uint) error
 	GetPermissionList() ([]*model.Permission, error)
 	GetPermissionsByModule(module string) ([]*model.Permission, error)
-	
+
 	// 角色权限管理
 	AssignRolePermissions(roleID uint, req *model.RolePermissionRequest) error
 	GetRolePermissions(roleID uint) ([]*model.Permission, error)
-	
+
 	// 用户权限检查
 	GetUserPermissions(userID uint) ([]*model.Permission, error)
 	CheckUserPermission(userID uint, permissionName string) (bool, error)
-	
+
 	// 初始化默认权限
 	InitializeDefaultPermissions() error
 }
@@ -152,53 +152,18 @@ func (s *permissionService) GetUserPermissions(userID uint) ([]*model.Permission
 
 // CheckUserPermission 检查用户权限（支持权限代码和权限名称）
 func (s *permissionService) CheckUserPermission(userID uint, permissionName string) (bool, error) {
-	// 获取用户信息和角色
 	user, err := s.userRepo.GetByID(userID)
 	if err != nil {
 		return false, err
 	}
-
-	// 获取用户角色
+	if !user.IsActive() {
+		return false, nil
+	}
 	role, err := s.roleRepo.GetByID(user.RoleID)
 	if err != nil {
 		return false, err
 	}
-
-	// 检查角色权限
-	for _, perm := range role.Permissions {
-		// 检查通配符权限
-		if perm == "*" {
-			return true, nil
-		}
-
-		// 检查精确匹配
-		if perm == permissionName {
-			return true, nil
-		}
-
-		// 检查模块级通配符 (如 "user:*" 匹配 "user:create")
-		if strings.HasSuffix(perm, ":*") {
-			module := strings.TrimSuffix(perm, ":*")
-			if strings.HasPrefix(permissionName, module+":") {
-				return true, nil
-			}
-		}
-	}
-
-	// 获取用户权限（从权限表）
-	permissions, err := s.GetUserPermissions(userID)
-	if err != nil {
-		return false, err
-	}
-
-	// 检查是否包含指定权限（支持权限名称）
-	for _, permission := range permissions {
-		if permission.Name == permissionName {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return model.PermissionGranted(role.Permissions, permissionName), nil
 }
 
 // InitializeDefaultPermissions 初始化默认权限
@@ -232,6 +197,8 @@ func (s *permissionService) InitializeDefaultPermissions() error {
 		{Name: "vulnerability:update", DisplayName: "更新漏洞", Module: "vulnerability", Action: "update", Resource: "vulnerability"},
 		{Name: "vulnerability:delete", DisplayName: "删除漏洞", Module: "vulnerability", Action: "delete", Resource: "vulnerability"},
 		{Name: "vulnerability:assign", DisplayName: "分配漏洞", Module: "vulnerability", Action: "assign", Resource: "vulnerability"},
+		{Name: "vuln:verify", DisplayName: "复测漏洞", Module: "vuln", Action: "verify", Resource: "vulnerability"},
+		{Name: "sla:manage", DisplayName: "管理SLA策略", Module: "sla", Action: "manage", Resource: "sla"},
 
 		// 报告管理权限
 		{Name: "report:create", DisplayName: "创建报告", Module: "report", Action: "create", Resource: "report"},
@@ -245,6 +212,20 @@ func (s *permissionService) InitializeDefaultPermissions() error {
 		{Name: "notification:read", DisplayName: "查看通知", Module: "notification", Action: "read", Resource: "notification"},
 		{Name: "notification:manage", DisplayName: "管理通知", Module: "notification", Action: "manage", Resource: "notification"},
 
+		// Route-level permissions for administration and independent modules.
+		{Name: "role:manage", DisplayName: "管理角色", Module: "role", Action: "manage", Resource: "role"},
+		{Name: "vuln:manage", DisplayName: "管理分配规则", Module: "vuln", Action: "manage", Resource: "assignment"},
+		{Name: "knowledge:create", DisplayName: "创建知识", Module: "knowledge", Action: "create", Resource: "knowledge"},
+		{Name: "knowledge:read", DisplayName: "查看知识", Module: "knowledge", Action: "read", Resource: "knowledge"},
+		{Name: "knowledge:update", DisplayName: "更新知识", Module: "knowledge", Action: "update", Resource: "knowledge"},
+		{Name: "knowledge:delete", DisplayName: "删除知识", Module: "knowledge", Action: "delete", Resource: "knowledge"},
+		{Name: "tag:manage", DisplayName: "管理标签", Module: "tag", Action: "manage", Resource: "tag"},
+		{Name: "template:manage", DisplayName: "管理知识模板", Module: "template", Action: "manage", Resource: "template"},
+		{Name: "email:manage", DisplayName: "管理邮件", Module: "email", Action: "manage", Resource: "email"},
+		{Name: "analytics:read", DisplayName: "查看统计", Module: "analytics", Action: "read", Resource: "analytics"},
+		{Name: "analytics:export", DisplayName: "导出统计", Module: "analytics", Action: "export", Resource: "analytics"},
+		{Name: "api:test", DisplayName: "测试接口", Module: "api", Action: "test", Resource: "api"},
+
 		// 系统管理权限
 		{Name: "system:config", DisplayName: "系统配置", Module: "system", Action: "manage", Resource: "config"},
 		{Name: "system:audit", DisplayName: "审计日志", Module: "system", Action: "read", Resource: "audit"},
@@ -252,6 +233,10 @@ func (s *permissionService) InitializeDefaultPermissions() error {
 	}
 
 	for _, permission := range defaultPermissions {
+		permission.Name = model.NormalizePermission(permission.Name)
+		if permission.Module == "vulnerability" {
+			permission.Module = "vuln"
+		}
 		// 检查权限是否已存在
 		if _, err := s.permissionRepo.GetByName(permission.Name); err != nil {
 			// 权限不存在，创建它
@@ -430,6 +415,18 @@ func NewAuditLogService(auditRepo repository.AuditLogRepository) AuditLogService
 // CreateAuditLog 创建审计日志
 func (s *auditLogService) CreateAuditLog(log *model.AuditLog) error {
 	return s.auditRepo.Create(log)
+}
+
+// CreateAuditLogContext is detected by the audit middleware for bounded, cancellable writes.
+func (s *auditLogService) CreateAuditLogContext(ctx context.Context, log *model.AuditLog) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	repo, ok := s.auditRepo.(repository.ContextAuditLogRepository)
+	if !ok {
+		return errors.New("audit repository does not support context cancellation")
+	}
+	return repo.CreateContext(ctx, log)
 }
 
 // GetAuditLogByID 根据ID获取审计日志

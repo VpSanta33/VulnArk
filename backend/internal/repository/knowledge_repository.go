@@ -2,10 +2,13 @@ package repository
 
 import (
 	"errors"
+	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"vulnark/internal/model"
 )
 
@@ -13,6 +16,7 @@ import (
 type KnowledgeRepository interface {
 	Create(knowledge *model.KnowledgeBase) error
 	GetByID(id uint) (*model.KnowledgeBase, error)
+	GetByIDForUpdate(id uint) (*model.KnowledgeBase, error)
 	Update(knowledge *model.KnowledgeBase) error
 	Delete(id uint) error
 	List(req *model.KnowledgeSearchRequest) ([]*model.KnowledgeBase, int64, error)
@@ -56,9 +60,18 @@ func (r *knowledgeRepository) GetByID(id uint) (*model.KnowledgeBase, error) {
 	return &knowledge, nil
 }
 
-// Update 更新知识库
+// GetByIDForUpdate 锁定正文，使同一知识的正文与标签更新串行执行。
+func (r *knowledgeRepository) GetByIDForUpdate(id uint) (*model.KnowledgeBase, error) {
+	var knowledge model.KnowledgeBase
+	if err := r.db.Clauses(clause.Locking{Strength: "UPDATE"}).First(&knowledge, id).Error; err != nil {
+		return nil, err
+	}
+	return &knowledge, nil
+}
+
+// Update 更新知识库，禁止保存预加载的作者/审核人关联。
 func (r *knowledgeRepository) Update(knowledge *model.KnowledgeBase) error {
-	return r.db.Save(knowledge).Error
+	return r.db.Model(knowledge).Select("*").Omit(clause.Associations, "id", "created_at").Updates(knowledge).Error
 }
 
 // Delete 删除知识库
@@ -75,7 +88,7 @@ func (r *knowledgeRepository) List(req *model.KnowledgeSearchRequest) ([]*model.
 
 	// 搜索条件
 	if req.Keyword != "" {
-		query = query.Where("title LIKE ? OR content LIKE ? OR summary LIKE ?", 
+		query = query.Where("title LIKE ? OR content LIKE ? OR summary LIKE ?",
 			"%"+req.Keyword+"%", "%"+req.Keyword+"%", "%"+req.Keyword+"%")
 	}
 
@@ -269,7 +282,7 @@ func (r *knowledgeRepository) GetRecent(limit int) ([]*model.KnowledgeBase, erro
 func (r *knowledgeRepository) Search(keyword string, limit int) ([]*model.KnowledgeBase, error) {
 	var knowledges []*model.KnowledgeBase
 	err := r.db.Preload("Author").
-		Where("status = ? AND (title LIKE ? OR content LIKE ? OR summary LIKE ?)", 
+		Where("status = ? AND (title LIKE ? OR content LIKE ? OR summary LIKE ?)",
 			"published", "%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%").
 		Order("view_count DESC").
 		Limit(limit).
@@ -282,6 +295,7 @@ type TagRepository interface {
 	Create(tag *model.Tag) error
 	GetByID(id uint) (*model.Tag, error)
 	GetByName(name string) (*model.Tag, error)
+	GetOrCreate(name string, creatorID uint) (*model.Tag, error)
 	Update(tag *model.Tag) error
 	Delete(id uint) error
 	List() ([]*model.Tag, error)
@@ -314,7 +328,7 @@ func (r *tagRepository) GetByID(id uint) (*model.Tag, error) {
 	err := r.db.Preload("Creator").First(&tag, id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("标签不存在")
+			return nil, fmt.Errorf("标签不存在: %w", err)
 		}
 		return nil, err
 	}
@@ -327,11 +341,31 @@ func (r *tagRepository) GetByName(name string) (*model.Tag, error) {
 	err := r.db.Where("name = ?", name).First(&tag).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("标签不存在")
+			return nil, fmt.Errorf("标签不存在: %w", err)
 		}
 		return nil, err
 	}
 	return &tag, nil
+}
+
+// GetOrCreate 只在明确不存在时创建；唯一键处理并发创建，同事务锁定读取最终标签。
+func (r *tagRepository) GetOrCreate(name string, creatorID uint) (*model.Tag, error) {
+	tag, err := r.GetByName(name)
+	if err == nil {
+		return tag, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	tag = &model.Tag{Name: name, DisplayName: name, Color: "#007bff", Category: "general", CreatorID: creatorID}
+	if err := r.db.Omit(clause.Associations).Clauses(clause.OnConflict{DoNothing: true}).Create(tag).Error; err != nil {
+		return nil, err
+	}
+	var persisted model.Tag
+	if err := r.db.Clauses(clause.Locking{Strength: "UPDATE"}).Where("name = ?", name).First(&persisted).Error; err != nil {
+		return nil, err
+	}
+	return &persisted, nil
 }
 
 // Update 更新标签
@@ -491,26 +525,69 @@ func (r *knowledgeRepository) GetKnowledgeTags(knowledgeID uint) ([]*model.Tag, 
 	return tags, err
 }
 
-// SetKnowledgeTags 设置知识库标签
+// SetKnowledgeTags 原子同步关联、旧文本字段与使用次数，重复标签仅计一次。
 func (r *knowledgeRepository) SetKnowledgeTags(knowledgeID uint, tagIDs []uint) error {
-	// 开启事务
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		// 删除现有标签关联
-		if err := tx.Where("knowledge_id = ?", knowledgeID).Delete(&model.KnowledgeTag{}).Error; err != nil {
+		if _, err := NewKnowledgeRepository(tx).GetByIDForUpdate(knowledgeID); err != nil {
 			return err
 		}
-
-		// 添加新的标签关联
-		for _, tagID := range tagIDs {
-			knowledgeTag := &model.KnowledgeTag{
-				KnowledgeID: knowledgeID,
-				TagID:       tagID,
+		var oldIDs []uint
+		if err := tx.Model(&model.KnowledgeTag{}).Where("knowledge_id = ?", knowledgeID).Distinct().Pluck("tag_id", &oldIDs).Error; err != nil {
+			return err
+		}
+		oldSet, newSet := make(map[uint]bool), make(map[uint]bool)
+		var desiredIDs, allIDs []uint
+		for _, id := range oldIDs {
+			oldSet[id] = true
+			allIDs = append(allIDs, id)
+		}
+		for _, id := range tagIDs {
+			if !newSet[id] {
+				newSet[id] = true
+				desiredIDs = append(desiredIDs, id)
+				if !oldSet[id] {
+					allIDs = append(allIDs, id)
+				}
 			}
-			if err := tx.Create(knowledgeTag).Error; err != nil {
+		}
+		// 不同知识同时修改共享标签时，按固定顺序锁住计数行。
+		sort.Slice(allIDs, func(i, j int) bool { return allIDs[i] < allIDs[j] })
+		var tags []model.Tag
+		if len(allIDs) > 0 {
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id IN ?", allIDs).Order("id").Find(&tags).Error; err != nil {
 				return err
 			}
 		}
-
-		return nil
+		names := make(map[uint]string, len(tags))
+		for _, tag := range tags {
+			names[tag.ID] = tag.Name
+		}
+		var textNames []string
+		for _, id := range desiredIDs {
+			name, exists := names[id]
+			if !exists {
+				return fmt.Errorf("标签 %d 不存在: %w", id, gorm.ErrRecordNotFound)
+			}
+			textNames = append(textNames, name)
+		}
+		for _, id := range allIDs {
+			switch {
+			case oldSet[id] && !newSet[id]:
+				if err := tx.Where("knowledge_id = ? AND tag_id = ?", knowledgeID, id).Delete(&model.KnowledgeTag{}).Error; err != nil {
+					return err
+				}
+				if err := NewTagRepository(tx).DecrementUsageCount(id); err != nil {
+					return err
+				}
+			case newSet[id] && !oldSet[id]:
+				if err := tx.Create(&model.KnowledgeTag{KnowledgeID: knowledgeID, TagID: id}).Error; err != nil {
+					return err
+				}
+				if err := NewTagRepository(tx).IncrementUsageCount(id); err != nil {
+					return err
+				}
+			}
+		}
+		return tx.Model(&model.KnowledgeBase{}).Where("id = ?", knowledgeID).Update("tags", strings.Join(textNames, ",")).Error
 	})
 }

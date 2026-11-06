@@ -190,7 +190,7 @@ func (c *PermissionController) GetPermissionsByModule(ctx *gin.Context) {
 // @Param request body model.RolePermissionRequest true "权限分配请求"
 // @Success 200 {object} model.Response
 // @Failure 400 {object} model.Response
-// @Router /api/v1/roles/{role_id}/permissions [post]
+// @Router /api/v1/role-permissions/{role_id} [post]
 func (c *PermissionController) AssignRolePermissions(ctx *gin.Context) {
 	roleIDStr := ctx.Param("role_id")
 	roleID, err := strconv.ParseUint(roleIDStr, 10, 32)
@@ -221,7 +221,7 @@ func (c *PermissionController) AssignRolePermissions(ctx *gin.Context) {
 // @Param role_id path int true "角色ID"
 // @Success 200 {object} model.Response{data=[]model.Permission}
 // @Failure 400 {object} model.Response
-// @Router /api/v1/roles/{role_id}/permissions [get]
+// @Router /api/v1/role-permissions/{role_id} [get]
 func (c *PermissionController) GetRolePermissions(ctx *gin.Context) {
 	roleIDStr := ctx.Param("role_id")
 	roleID, err := strconv.ParseUint(roleIDStr, 10, 32)

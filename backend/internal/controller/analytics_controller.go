@@ -1,7 +1,15 @@
 package controller
 
 import (
+	"io"
+	"mime"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+
 	"github.com/gin-gonic/gin"
+	"vulnark/internal/middleware"
 	"vulnark/internal/model"
 	"vulnark/internal/service"
 	"vulnark/pkg/utils"
@@ -9,14 +17,42 @@ import (
 
 // AnalyticsController 统计分析控制器
 type AnalyticsController struct {
-	analyticsService service.AnalyticsService
+	analyticsService  service.AnalyticsService
+	permissionService service.PermissionService
 }
 
 // NewAnalyticsController 创建统计分析控制器
-func NewAnalyticsController(analyticsService service.AnalyticsService) *AnalyticsController {
-	return &AnalyticsController{
-		analyticsService: analyticsService,
+func NewAnalyticsController(analyticsService service.AnalyticsService, permissions ...service.PermissionService) *AnalyticsController {
+	c := &AnalyticsController{analyticsService: analyticsService}
+	if len(permissions) > 0 {
+		c.permissionService = permissions[0]
 	}
+	return c
+}
+
+func (c *AnalyticsController) allowExport(ctx *gin.Context, kind string) bool {
+	if kind != model.ExportTypeUser {
+		return true
+	}
+	userID, ok := middleware.GetCurrentUserID(ctx)
+	if !ok || userID == 0 {
+		utils.UnauthorizedResponse(ctx, "请先登录")
+		return false
+	}
+	if c.permissionService == nil {
+		utils.ForbiddenResponse(ctx, "缺少用户管理权限")
+		return false
+	}
+	allowed, err := c.permissionService.CheckUserPermission(userID, "user:manage")
+	if err != nil {
+		utils.ServerErrorResponse(ctx, "权限检查失败")
+		return false
+	}
+	if !allowed {
+		utils.ForbiddenResponse(ctx, "缺少用户管理权限")
+		return false
+	}
+	return true
 }
 
 // GetDashboardStats 获取仪表盘统计数据
@@ -244,7 +280,7 @@ func (c *AnalyticsController) GetUserAnalytics(ctx *gin.Context) {
 
 // ExportData 导出数据
 // @Summary 导出数据
-// @Description 导出统计分析数据为指定格式
+// @Description 创建统计 CSV 并返回 file_name、file_url、file_size，其中 file_url 是携带相同筛选条件的鉴权 GET 下载链接，下载时仍须提供 Authorization: Bearer 访问令牌。当前仅实现 csv，excel、pdf 请求返回 400。请求字段 type、format 必填，start_date、end_date 可选；filters 支持 asset_id、user_id、severity、status、category、granularity。需要 analytics:read、analytics:export 权限，type=user 额外需要 user:manage 权限。
 // @Tags 统计分析
 // @Accept json
 // @Produce json
@@ -258,14 +294,104 @@ func (c *AnalyticsController) ExportData(ctx *gin.Context) {
 	if err := utils.BindAndValidate(ctx, &req); err != nil {
 		return
 	}
-
+	if !c.allowExport(ctx, req.Type) {
+		return
+	}
 	response, err := c.analyticsService.ExportData(&req)
 	if err != nil {
 		utils.BadRequestResponse(ctx, err.Error())
 		return
 	}
-
+	if response == nil || response.FileName == "" || filepath.Base(response.FileName) != response.FileName || filepath.Ext(response.FileName) != ".csv" {
+		utils.ServerErrorResponse(ctx, "无效的导出结果")
+		return
+	}
+	// Metadata points to the authenticated generator, so the validation file is no longer needed.
+	if err := os.Remove(filepath.Join("exports", response.FileName)); err != nil {
+		utils.ServerErrorResponse(ctx, "清理导出失败")
+		return
+	}
 	utils.SuccessResponse(ctx, response)
+}
+
+// DownloadExport returns a freshly generated CSV through the authenticated API.
+// @Summary 下载统计CSV
+// @Description 按筛选条件即时生成并返回 CSV 文件流，不接受文件路径参数。需要 analytics:read、analytics:export 权限，type=user 额外需要 user:manage 权限。
+// @Tags 统计分析
+// @Produce text/csv
+// @Security ApiKeyAuth
+// @Param type query string true "导出类型" Enums(dashboard,vulnerability,asset,report,user)
+// @Param format query string false "当前仅支持 csv" default(csv) Enums(csv)
+// @Param start_date query string false "开始日期 (YYYY-MM-DD)"
+// @Param end_date query string false "结束日期 (YYYY-MM-DD)"
+// @Param granularity query string false "时间粒度" Enums(day,week,month)
+// @Param asset_id query string false "资产ID"
+// @Param user_id query string false "用户ID"
+// @Param severity query string false "严重程度"
+// @Param status query string false "状态"
+// @Param category query string false "分类"
+// @Success 200 {file} file "CSV 文件流"
+// @Header 200 {string} Content-Disposition "attachment; filename=导出文件名.csv"
+// @Header 200 {string} Cache-Control "no-store"
+// @Failure 400 {object} model.Response
+// @Failure 401 {object} model.Response
+// @Failure 403 {object} model.Response
+// @Failure 500 {object} model.Response
+// @Router /api/v1/analytics/export [get]
+func (c *AnalyticsController) DownloadExport(ctx *gin.Context) {
+	kind := ctx.Query("type")
+	switch kind {
+	case model.ExportTypeDashboard, model.ExportTypeVulnerability, model.ExportTypeAsset, model.ExportTypeReport, model.ExportTypeUser:
+	default:
+		utils.BadRequestResponse(ctx, "不支持的导出类型")
+		return
+	}
+	if !c.allowExport(ctx, kind) {
+		return
+	}
+	format := ctx.DefaultQuery("format", model.ExportFormatCSV)
+	if format != model.ExportFormatCSV {
+		utils.BadRequestResponse(ctx, "当前仅支持CSV导出")
+		return
+	}
+	var filters model.AnalyticsRequest
+	if err := utils.BindQueryAndValidate(ctx, &filters); err != nil {
+		return
+	}
+	req := &model.ExportRequest{Type: kind, Format: format, StartDate: filters.StartDate, EndDate: filters.EndDate,
+		Filters: map[string]interface{}{"asset_id": filters.AssetID, "user_id": filters.UserID, "severity": filters.Severity, "status": filters.Status, "category": filters.Category, "granularity": filters.Granularity}}
+	response, err := c.analyticsService.ExportData(req)
+	if err != nil {
+		utils.BadRequestResponse(ctx, err.Error())
+		return
+	}
+	// The name comes from the service, never from a requested filesystem path.
+	if response == nil || response.FileName == "" || filepath.Base(response.FileName) != response.FileName || filepath.Ext(response.FileName) != ".csv" {
+		utils.ServerErrorResponse(ctx, "无效的导出结果")
+		return
+	}
+	path := filepath.Join("exports", response.FileName)
+	file, err := os.Open(path)
+	if err != nil {
+		utils.ServerErrorResponse(ctx, "读取导出失败")
+		return
+	}
+	defer file.Close()
+	defer os.Remove(path)
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		utils.ServerErrorResponse(ctx, "读取导出失败")
+		return
+	}
+	ctx.Header("Content-Type", "text/csv; charset=utf-8")
+	ctx.Header("Content-Length", strconv.FormatInt(info.Size(), 10))
+	ctx.Header("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": response.FileName}))
+	ctx.Header("Cache-Control", "no-store")
+	ctx.Header("X-Content-Type-Options", "nosniff")
+	ctx.Status(http.StatusOK)
+	if _, err := io.Copy(ctx.Writer, file); err != nil {
+		_ = ctx.Error(err)
+	}
 }
 
 // GetSystemOverview 获取系统概览
@@ -318,12 +444,10 @@ func calculateResolutionRate(stats model.VulnerabilityStatusStats) float64 {
 
 // 辅助函数：计算资产覆盖率
 func calculateAssetCoverage(stats *model.DashboardStats) float64 {
-	if stats.TotalAssets == 0 {
+	if stats == nil || stats.TotalAssets == 0 {
 		return 0
 	}
-	// 简单假设：有漏洞记录的资产数量 / 总资产数量
-	// 这里需要根据实际业务逻辑调整
-	return 85.0 // 示例值
+	return float64(stats.AssetsWithVulnerabilities) / float64(stats.TotalAssets) * 100
 }
 
 // 辅助函数：计算用户活跃度

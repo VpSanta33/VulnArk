@@ -298,6 +298,7 @@ func (c *KnowledgeController) ArchiveKnowledge(ctx *gin.Context) {
 // @Description 搜索知识库内容
 // @Tags 知识库管理
 // @Produce json
+// @Security ApiKeyAuth
 // @Param q query string true "搜索关键词"
 // @Param limit query int false "限制数量" default(10)
 // @Success 200 {object} model.Response{data=[]model.KnowledgeBase}
@@ -330,6 +331,7 @@ func (c *KnowledgeController) SearchKnowledge(ctx *gin.Context) {
 // @Description 获取热门知识库列表
 // @Tags 知识库管理
 // @Produce json
+// @Security ApiKeyAuth
 // @Param limit query int false "限制数量" default(10)
 // @Success 200 {object} model.Response{data=[]model.KnowledgeBase}
 // @Failure 500 {object} model.Response
@@ -355,6 +357,7 @@ func (c *KnowledgeController) GetPopularKnowledge(ctx *gin.Context) {
 // @Description 获取最新知识库列表
 // @Tags 知识库管理
 // @Produce json
+// @Security ApiKeyAuth
 // @Param limit query int false "限制数量" default(10)
 // @Success 200 {object} model.Response{data=[]model.KnowledgeBase}
 // @Failure 500 {object} model.Response
@@ -380,6 +383,7 @@ func (c *KnowledgeController) GetRecentKnowledge(ctx *gin.Context) {
 // @Description 获取与指定知识库相关的其他知识库
 // @Tags 知识库管理
 // @Produce json
+// @Security ApiKeyAuth
 // @Param id path int true "知识库ID"
 // @Param limit query int false "限制数量" default(5)
 // @Success 200 {object} model.Response{data=[]model.KnowledgeBase}
@@ -445,6 +449,7 @@ func (c *KnowledgeController) CreateTag(ctx *gin.Context) {
 // @Description 获取所有标签列表
 // @Tags 标签管理
 // @Produce json
+// @Security ApiKeyAuth
 // @Success 200 {object} model.Response{data=[]model.Tag}
 // @Failure 500 {object} model.Response
 // @Router /api/v1/tags [get]
@@ -463,6 +468,7 @@ func (c *KnowledgeController) GetTagList(ctx *gin.Context) {
 // @Description 根据ID获取标签详情
 // @Tags 标签管理
 // @Produce json
+// @Security ApiKeyAuth
 // @Param id path int true "标签ID"
 // @Success 200 {object} model.Response{data=model.Tag}
 // @Failure 400 {object} model.Response
@@ -548,6 +554,7 @@ func (c *KnowledgeController) DeleteTag(ctx *gin.Context) {
 // @Description 获取热门标签列表
 // @Tags 标签管理
 // @Produce json
+// @Security ApiKeyAuth
 // @Param limit query int false "限制数量" default(20)
 // @Success 200 {object} model.Response{data=[]model.Tag}
 // @Failure 500 {object} model.Response
@@ -605,6 +612,7 @@ func (c *KnowledgeController) CreateTemplate(ctx *gin.Context) {
 // @Description 获取所有模板列表
 // @Tags 模板管理
 // @Produce json
+// @Security ApiKeyAuth
 // @Success 200 {object} model.Response{data=[]model.Template}
 // @Failure 500 {object} model.Response
 // @Router /api/v1/templates [get]
@@ -623,6 +631,7 @@ func (c *KnowledgeController) GetTemplateList(ctx *gin.Context) {
 // @Description 根据ID获取模板详情
 // @Tags 模板管理
 // @Produce json
+// @Security ApiKeyAuth
 // @Param id path int true "模板ID"
 // @Success 200 {object} model.Response{data=model.Template}
 // @Failure 400 {object} model.Response

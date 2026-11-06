@@ -4,6 +4,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -44,18 +45,18 @@ func (RolePermission) TableName() string {
 
 // SystemConfig 系统配置模型
 type SystemConfig struct {
-	ID          uint        `json:"id" gorm:"primarykey"`
-	CreatedAt   time.Time   `json:"created_at"`
-	UpdatedAt   time.Time   `json:"updated_at"`
-	Key         string      `json:"key" gorm:"size:100;not null;uniqueIndex"`
-	Value       ConfigValue `json:"value" gorm:"type:json;not null"`
-	Type        string      `json:"type" gorm:"size:20;not null"`
-	Category    string      `json:"category" gorm:"size:50;not null"`
-	DisplayName string      `json:"display_name" gorm:"size:100;not null"`
-	Description string      `json:"description" gorm:"type:text"`
-	IsPublic    bool        `json:"is_public" gorm:"default:false"`
-	IsEditable  bool        `json:"is_editable" gorm:"default:true"`
-	Validation  string      `json:"validation" gorm:"type:text"`
+	ID           uint        `json:"id" gorm:"primarykey"`
+	CreatedAt    time.Time   `json:"created_at"`
+	UpdatedAt    time.Time   `json:"updated_at"`
+	Key          string      `json:"key" gorm:"size:100;not null;uniqueIndex"`
+	Value        ConfigValue `json:"value" gorm:"type:json;not null"`
+	Type         string      `json:"type" gorm:"size:20;not null"`
+	Category     string      `json:"category" gorm:"size:50;not null"`
+	DisplayName  string      `json:"display_name" gorm:"size:100;not null"`
+	Description  string      `json:"description" gorm:"type:text"`
+	IsPublic     bool        `json:"is_public" gorm:"default:false"`
+	IsEditable   bool        `json:"is_editable" gorm:"default:true"`
+	Validation   string      `json:"validation" gorm:"type:text"`
 	DefaultValue ConfigValue `json:"default_value" gorm:"type:json"`
 }
 
@@ -81,12 +82,12 @@ func (c *ConfigValue) Scan(value interface{}) error {
 		*c = ConfigValue{}
 		return nil
 	}
-	
+
 	bytes, ok := value.([]byte)
 	if !ok {
 		return errors.New("无法将值转换为[]byte")
 	}
-	
+
 	return json.Unmarshal(bytes, c)
 }
 
@@ -123,7 +124,7 @@ func (c ConfigValue) GetBool(key string) bool {
 // AuditLog 审计日志模型
 type AuditLog struct {
 	ID         uint      `json:"id" gorm:"primarykey"`
-	CreatedAt  time.Time `json:"created_at"`
+	CreatedAt  time.Time `json:"created_at" gorm:"index:idx_auditlog_created_at"`
 	UserID     *uint     `json:"user_id"`
 	Username   string    `json:"username" gorm:"size:50"`
 	Action     string    `json:"action" gorm:"size:100;not null"`
@@ -177,29 +178,29 @@ type SystemConfigUpdateRequest struct {
 
 // AuditLogSearchRequest 审计日志搜索请求
 type AuditLogSearchRequest struct {
-	Keyword    string `json:"keyword" form:"keyword"`
-	UserID     string `json:"user_id" form:"user_id"`
-	Username   string `json:"username" form:"username"`
-	Action     string `json:"action" form:"action"`
-	Resource   string `json:"resource" form:"resource"`
-	Method     string `json:"method" form:"method"`
-	Status     string `json:"status" form:"status"`
-	IP         string `json:"ip" form:"ip"`
-	StartDate  string `json:"start_date" form:"start_date"`
-	EndDate    string `json:"end_date" form:"end_date"`
+	Keyword   string `json:"keyword" form:"keyword"`
+	UserID    string `json:"user_id" form:"user_id"`
+	Username  string `json:"username" form:"username"`
+	Action    string `json:"action" form:"action"`
+	Resource  string `json:"resource" form:"resource"`
+	Method    string `json:"method" form:"method"`
+	Status    string `json:"status" form:"status"`
+	IP        string `json:"ip" form:"ip"`
+	StartDate string `json:"start_date" form:"start_date"`
+	EndDate   string `json:"end_date" form:"end_date"`
 	PaginationRequest
 }
 
 // PermissionInfo 权限信息（用于响应）
 type PermissionInfo struct {
-	ID          uint   `json:"id"`
-	Name        string `json:"name"`
-	DisplayName string `json:"display_name"`
-	Description string `json:"description"`
-	Module      string `json:"module"`
-	Action      string `json:"action"`
-	Resource    string `json:"resource"`
-	IsActive    bool   `json:"is_active"`
+	ID          uint      `json:"id"`
+	Name        string    `json:"name"`
+	DisplayName string    `json:"display_name"`
+	Description string    `json:"description"`
+	Module      string    `json:"module"`
+	Action      string    `json:"action"`
+	Resource    string    `json:"resource"`
+	IsActive    bool      `json:"is_active"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 
@@ -289,25 +290,25 @@ func (a *AuditLog) ToAuditLogInfo() AuditLogInfo {
 		Duration:   a.Duration,
 		Error:      a.Error,
 	}
-	
+
 	if a.User != nil {
 		userInfo := a.User.ToUserInfo()
 		info.User = &userInfo
 	}
-	
+
 	return info
 }
 
 // 权限模块常量
 const (
-	PermissionModuleUser           = "user"
-	PermissionModuleRole           = "role"
-	PermissionModuleAsset          = "asset"
-	PermissionModuleVulnerability  = "vulnerability"
-	PermissionModuleReport         = "report"
-	PermissionModuleNotification   = "notification"
-	PermissionModuleSystem         = "system"
-	PermissionModuleAudit          = "audit"
+	PermissionModuleUser          = "user"
+	PermissionModuleRole          = "role"
+	PermissionModuleAsset         = "asset"
+	PermissionModuleVulnerability = "vulnerability"
+	PermissionModuleReport        = "report"
+	PermissionModuleNotification  = "notification"
+	PermissionModuleSystem        = "system"
+	PermissionModuleAudit         = "audit"
 )
 
 // 权限动作常量
@@ -325,13 +326,13 @@ const (
 
 // 配置类型常量
 const (
-	ConfigTypeString  = "string"
-	ConfigTypeInt     = "int"
-	ConfigTypeBool    = "bool"
-	ConfigTypeFloat   = "float"
-	ConfigTypeJSON    = "json"
-	ConfigTypeArray   = "array"
-	ConfigTypeObject  = "object"
+	ConfigTypeString = "string"
+	ConfigTypeInt    = "int"
+	ConfigTypeBool   = "bool"
+	ConfigTypeFloat  = "float"
+	ConfigTypeJSON   = "json"
+	ConfigTypeArray  = "array"
+	ConfigTypeObject = "object"
 )
 
 // 配置分类常量
@@ -343,3 +344,25 @@ const (
 	ConfigCategoryNotification = "notification"
 	ConfigCategoryAudit        = "audit"
 )
+
+// NormalizePermission preserves legacy vulnerability names as aliases of vuln.
+func NormalizePermission(name string) string {
+	if strings.HasPrefix(name, "vulnerability:") {
+		return "vuln:" + strings.TrimPrefix(name, "vulnerability:")
+	}
+	return name
+}
+
+func PermissionGranted(grants Permissions, requested string) bool {
+	requested = NormalizePermission(requested)
+	for _, grant := range grants {
+		grant = NormalizePermission(grant)
+		if grant == "*" || grant == requested {
+			return true
+		}
+		if strings.HasSuffix(grant, ":*") && strings.HasPrefix(requested, strings.TrimSuffix(grant, "*")) {
+			return true
+		}
+	}
+	return false
+}

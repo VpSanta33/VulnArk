@@ -1,12 +1,14 @@
 package repository
 
 import (
+	"context"
 	"errors"
 	"strconv"
 	"strings"
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"vulnark/internal/model"
 )
 
@@ -93,25 +95,37 @@ func (r *permissionRepository) GetByModule(module string) ([]*model.Permission, 
 
 // GetUserPermissions 获取用户权限列表
 func (r *permissionRepository) GetUserPermissions(userID uint) ([]*model.Permission, error) {
-	var permissions []*model.Permission
-	err := r.db.Table("permissions p").
-		Select("p.*").
-		Joins("JOIN role_permissions rp ON p.id = rp.permission_id").
-		Joins("JOIN user_roles ur ON rp.role_id = ur.role_id").
-		Where("ur.user_id = ? AND p.is_active = ?", userID, true).
-		Find(&permissions).Error
-	return permissions, err
+	var user model.User
+	if err := r.db.Preload("Role").First(&user, userID).Error; err != nil {
+		return nil, err
+	}
+	if !user.IsActive() {
+		return []*model.Permission{}, nil
+	}
+	return rolePermissionMetadata(r.db, user.Role.Permissions)
 }
 
-// CheckUserPermission 检查用户是否有指定权限
 func (r *permissionRepository) CheckUserPermission(userID uint, permissionName string) (bool, error) {
-	var count int64
-	err := r.db.Table("permissions p").
-		Joins("JOIN role_permissions rp ON p.id = rp.permission_id").
-		Joins("JOIN user_roles ur ON rp.role_id = ur.role_id").
-		Where("ur.user_id = ? AND p.name = ? AND p.is_active = ?", userID, permissionName, true).
-		Count(&count).Error
-	return count > 0, err
+	var user model.User
+	if err := r.db.Preload("Role").First(&user, userID).Error; err != nil {
+		return false, err
+	}
+	return user.IsActive() && model.PermissionGranted(user.Role.Permissions, permissionName), nil
+}
+
+func rolePermissionMetadata(db *gorm.DB, grants model.Permissions) ([]*model.Permission, error) {
+	var catalog []*model.Permission
+	if err := db.Order("module, action, resource").Find(&catalog).Error; err != nil {
+		return nil, err
+	}
+	permissions := make([]*model.Permission, 0)
+	for _, permission := range catalog {
+		if model.PermissionGranted(grants, permission.Name) {
+			permission.Name = model.NormalizePermission(permission.Name)
+			permissions = append(permissions, permission)
+		}
+	}
+	return permissions, nil
 }
 
 // RolePermissionRepository 角色权限仓储接口
@@ -136,46 +150,65 @@ func NewRolePermissionRepository(db *gorm.DB) RolePermissionRepository {
 
 // AssignPermissions 分配权限给角色
 func (r *rolePermissionRepository) AssignPermissions(roleID uint, permissionIDs []uint) error {
-	// 先删除现有权限
-	if err := r.ClearRolePermissions(roleID); err != nil {
-		return err
-	}
-
-	// 添加新权限
-	for _, permissionID := range permissionIDs {
-		rolePermission := &model.RolePermission{
-			RoleID:       roleID,
-			PermissionID: permissionID,
-		}
-		if err := r.db.Create(rolePermission).Error; err != nil {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var role model.Role
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&role, roleID).Error; err != nil {
 			return err
 		}
-	}
-
-	return nil
+		grants := model.Permissions{}
+		seen := map[string]bool{}
+		for _, id := range permissionIDs {
+			var permission model.Permission
+			if err := tx.First(&permission, id).Error; err != nil {
+				return errors.New("权限不存在")
+			}
+			name := model.NormalizePermission(permission.Name)
+			if !seen[name] {
+				grants = append(grants, name)
+				seen[name] = true
+			}
+		}
+		return tx.Model(&model.Role{}).Where("id = ?", roleID).Update("permissions", grants).Error
+	})
 }
 
-// RemovePermissions 移除角色权限
 func (r *rolePermissionRepository) RemovePermissions(roleID uint, permissionIDs []uint) error {
-	return r.db.Where("role_id = ? AND permission_id IN ?", roleID, permissionIDs).
-		Delete(&model.RolePermission{}).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var role model.Role
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&role, roleID).Error; err != nil {
+			return err
+		}
+		var removed []*model.Permission
+		if err := tx.Where("id IN ?", permissionIDs).Find(&removed).Error; err != nil {
+			return err
+		}
+		kept := model.Permissions{}
+		for _, grant := range role.Permissions {
+			remove := false
+			for _, permission := range removed {
+				if model.NormalizePermission(grant) == model.NormalizePermission(permission.Name) {
+					remove = true
+					break
+				}
+			}
+			if !remove {
+				kept = append(kept, grant)
+			}
+		}
+		return tx.Model(&model.Role{}).Where("id = ?", roleID).Update("permissions", kept).Error
+	})
 }
 
-// GetRolePermissions 获取角色权限列表
 func (r *rolePermissionRepository) GetRolePermissions(roleID uint) ([]*model.Permission, error) {
-	var permissions []*model.Permission
-	err := r.db.Table("permissions p").
-		Select("p.*").
-		Joins("JOIN role_permissions rp ON p.id = rp.permission_id").
-		Where("rp.role_id = ? AND p.is_active = ?", roleID, true).
-		Order("p.module, p.action, p.resource").
-		Find(&permissions).Error
-	return permissions, err
+	var role model.Role
+	if err := r.db.First(&role, roleID).Error; err != nil {
+		return nil, err
+	}
+	return rolePermissionMetadata(r.db, role.Permissions)
 }
 
-// ClearRolePermissions 清空角色权限
 func (r *rolePermissionRepository) ClearRolePermissions(roleID uint) error {
-	return r.db.Where("role_id = ?", roleID).Delete(&model.RolePermission{}).Error
+	return r.db.Model(&model.Role{}).Where("id = ?", roleID).Update("permissions", model.Permissions{}).Error
 }
 
 // SystemConfigRepository 系统配置仓储接口
@@ -259,6 +292,15 @@ type AuditLogRepository interface {
 	GetStats() (map[string]interface{}, error)
 }
 
+// ContextAuditLogRepository supports cancellable audit persistence without changing legacy callers.
+type ContextAuditLogRepository interface {
+	CreateContext(ctx context.Context, log *model.AuditLog) error
+}
+
+type ContextAuditLogCleanupRepository interface {
+	DeleteOldLogsBatch(ctx context.Context, before time.Time, limit int) (int64, error)
+}
+
 // auditLogRepository 审计日志仓储实现
 type auditLogRepository struct {
 	db *gorm.DB
@@ -273,7 +315,11 @@ func NewAuditLogRepository(db *gorm.DB) AuditLogRepository {
 
 // Create 创建审计日志
 func (r *auditLogRepository) Create(log *model.AuditLog) error {
-	return r.db.Create(log).Error
+	return r.CreateContext(context.Background(), log)
+}
+
+func (r *auditLogRepository) CreateContext(ctx context.Context, log *model.AuditLog) error {
+	return r.db.WithContext(ctx).Create(log).Error
 }
 
 // GetByID 根据ID获取审计日志
@@ -298,7 +344,7 @@ func (r *auditLogRepository) List(req *model.AuditLogSearchRequest) ([]*model.Au
 
 	// 搜索条件
 	if req.Keyword != "" {
-		query = query.Where("action LIKE ? OR resource LIKE ? OR path LIKE ?", 
+		query = query.Where("action LIKE ? OR resource LIKE ? OR path LIKE ?",
 			"%"+req.Keyword+"%", "%"+req.Keyword+"%", "%"+req.Keyword+"%")
 	}
 
@@ -365,6 +411,24 @@ func (r *auditLogRepository) List(req *model.AuditLogSearchRequest) ([]*model.Au
 func (r *auditLogRepository) DeleteOldLogs(days int) error {
 	cutoffDate := time.Now().AddDate(0, 0, -days)
 	return r.db.Where("created_at < ?", cutoffDate).Delete(&model.AuditLog{}).Error
+}
+
+// Select a bounded set first: MySQL and SQLite both support this without a
+// dialect-specific DELETE LIMIT. Concurrent workers can safely delete the same IDs.
+func (r *auditLogRepository) DeleteOldLogsBatch(ctx context.Context, before time.Time, limit int) (int64, error) {
+	if limit < 1 || limit > 1000 {
+		limit = 1000
+	}
+	var ids []uint
+	db := r.db.WithContext(ctx)
+	if err := db.Model(&model.AuditLog{}).Where("created_at < ?", before).Order("created_at, id").Limit(limit).Pluck("id", &ids).Error; err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	result := db.Where("id IN ? AND created_at < ?", ids, before).Delete(&model.AuditLog{})
+	return result.RowsAffected, result.Error
 }
 
 // GetStats 获取审计日志统计

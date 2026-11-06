@@ -8,92 +8,92 @@ import (
 	"vulnark/internal/config"
 )
 
-// Claims JWT声明
 type Claims struct {
-	UserID   uint   `json:"user_id"`
-	Username string `json:"username"`
-	RoleID   uint   `json:"role_id"`
+	UserID       uint   `json:"user_id"`
+	Username     string `json:"username"`
+	RoleID       uint   `json:"role_id"`
+	TokenVersion uint64 `json:"token_version"`
+	Purpose      string `json:"purpose"`
 	jwt.RegisteredClaims
 }
 
-// JWTManager JWT管理器
 type JWTManager struct {
-	secretKey   string
-	expireTime  time.Duration
+	secretKey  string
+	expireTime time.Duration
+	issuer     string
+	clock      func() time.Time
 }
 
-// NewJWTManager 创建JWT管理器
+// Invalid or missing production configuration never falls back to a default key.
 func NewJWTManager() *JWTManager {
+	if config.AppConfig == nil {
+		return nil
+	}
 	cfg := config.AppConfig.JWT
-	return &JWTManager{
-		secretKey:  cfg.Secret,
-		expireTime: time.Duration(cfg.ExpireTime) * time.Second,
-	}
+	manager, _ := NewJWTManagerWithConfig(cfg.Secret, time.Duration(cfg.ExpireTime)*time.Second, "vulnark")
+	return manager
 }
 
-// GenerateToken 生成JWT令牌
-func (j *JWTManager) GenerateToken(userID uint, username string, roleID uint) (string, time.Time, error) {
-	expiresAt := time.Now().Add(j.expireTime)
-	
-	claims := &Claims{
-		UserID:   userID,
-		Username: username,
-		RoleID:   roleID,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(expiresAt),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			NotBefore: jwt.NewNumericDate(time.Now()),
-			Issuer:    "vulnark",
-			Subject:   username,
-		},
+func NewJWTManagerWithConfig(secret string, expiry time.Duration, issuer string) (*JWTManager, error) {
+	if len(secret) < 32 || expiry <= 0 || issuer == "" {
+		return nil, errors.New("invalid JWT configuration")
 	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString([]byte(j.secretKey))
-	if err != nil {
-		return "", time.Time{}, err
-	}
-
-	return tokenString, expiresAt, nil
+	return &JWTManager{secretKey: secret, expireTime: expiry, issuer: issuer, clock: time.Now}, nil
 }
 
-// ParseToken 解析JWT令牌
-func (j *JWTManager) ParseToken(tokenString string) (*Claims, error) {
-	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, errors.New("无效的签名方法")
+func (j *JWTManager) GenerateAccessToken(id uint, username string, roleID uint, version uint64) (string, time.Time, error) {
+	if j == nil {
+		return "", time.Time{}, errors.New("authentication is not configured")
+	}
+	return j.generate(id, username, roleID, version, "access", j.expireTime)
+}
+
+func (j *JWTManager) GenerateRebindToken(id uint, username string, roleID uint, version uint64) (string, time.Time, error) {
+	return j.generate(id, username, roleID, version, "mfa_rebind", 10*time.Minute)
+}
+
+func (j *JWTManager) generate(id uint, username string, roleID uint, version uint64, purpose string, expiry time.Duration) (string, time.Time, error) {
+	if j == nil || id == 0 || version == 0 {
+		return "", time.Time{}, errors.New("invalid authentication state")
+	}
+	now := j.clock()
+	expires := now.Add(expiry)
+	claims := &Claims{UserID: id, Username: username, RoleID: roleID, TokenVersion: version, Purpose: purpose,
+		RegisteredClaims: jwt.RegisteredClaims{Issuer: j.issuer, Subject: username, IssuedAt: jwt.NewNumericDate(now), NotBefore: jwt.NewNumericDate(now), ExpiresAt: jwt.NewNumericDate(expires)}}
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(j.secretKey))
+	return token, expires, err
+}
+
+func (j *JWTManager) ParseToken(token string) (*Claims, error) {
+	return j.ParsePurposeToken(token, "access")
+}
+
+func (j *JWTManager) ParsePurposeToken(token string, purposes ...string) (*Claims, error) {
+	if j == nil {
+		return nil, errors.New("authentication is not configured")
+	}
+	parsed, err := jwt.ParseWithClaims(token, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		if token.Method != jwt.SigningMethodHS256 {
+			return nil, errors.New("invalid signing algorithm")
 		}
 		return []byte(j.secretKey), nil
-	})
-
+	}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithIssuer(j.issuer), jwt.WithIssuedAt(), jwt.WithTimeFunc(j.clock))
 	if err != nil {
 		return nil, err
 	}
-
-	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
-		return claims, nil
+	claims, ok := parsed.Claims.(*Claims)
+	if !ok || !parsed.Valid || claims.ExpiresAt == nil || claims.IssuedAt == nil || claims.NotBefore == nil || claims.UserID == 0 || claims.TokenVersion == 0 {
+		return nil, errors.New("invalid authentication claims")
 	}
-
-	return nil, errors.New("无效的令牌")
+	for _, purpose := range purposes {
+		if claims.Purpose == purpose {
+			return claims, nil
+		}
+	}
+	return nil, errors.New("invalid token purpose")
 }
 
-// RefreshToken 刷新令牌
-func (j *JWTManager) RefreshToken(tokenString string) (string, time.Time, error) {
-	claims, err := j.ParseToken(tokenString)
-	if err != nil {
-		return "", time.Time{}, err
-	}
-
-	// 检查令牌是否即将过期（剩余时间少于1小时）
-	if time.Until(claims.ExpiresAt.Time) > time.Hour {
-		return "", time.Time{}, errors.New("令牌尚未到刷新时间")
-	}
-
-	return j.GenerateToken(claims.UserID, claims.Username, claims.RoleID)
-}
-
-// ValidateToken 验证令牌有效性
-func (j *JWTManager) ValidateToken(tokenString string) bool {
-	_, err := j.ParseToken(tokenString)
+func (j *JWTManager) ValidateToken(token string) bool {
+	_, err := j.ParseToken(token)
 	return err == nil
 }
