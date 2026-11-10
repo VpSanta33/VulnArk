@@ -24,6 +24,10 @@ type Asset struct {
 	Description     string    `json:"description" gorm:"type:text"`
 	Status          int       `json:"status" gorm:"default:1"` // 1-正常，0-下线
 
+	// Exposure feeds the risk score. Existing rows read as internal, not internet-facing.
+	InternetFacing bool   `json:"internet_facing" gorm:"default:false"`
+	NetworkZone    string `json:"network_zone" gorm:"size:20;default:internal"` // internal, dmz, production, ot, test
+
 	// 关联
 	Owner *User `json:"owner,omitempty" gorm:"foreignKey:OwnerID"`
 }
@@ -48,6 +52,8 @@ type AssetCreateRequest struct {
 	BusinessLine    string `json:"business_line"`
 	ImportanceLevel int    `json:"importance_level" binding:"omitempty,oneof=1 2 3"`
 	Description     string `json:"description"`
+	InternetFacing  bool   `json:"internet_facing"`
+	NetworkZone     string `json:"network_zone" binding:"omitempty,oneof=internal dmz production ot test"`
 }
 
 // AssetUpdateRequest 资产更新请求
@@ -66,6 +72,8 @@ type AssetUpdateRequest struct {
 	ImportanceLevel *int   `json:"importance_level" binding:"omitempty,oneof=1 2 3"`
 	Description     string `json:"description"`
 	Status          *int   `json:"status" binding:"omitempty,oneof=0 1"`
+	InternetFacing  *bool  `json:"internet_facing"`
+	NetworkZone     string `json:"network_zone" binding:"omitempty,oneof=internal dmz production ot test"`
 }
 
 // AssetSearchRequest 资产搜索请求
@@ -113,6 +121,8 @@ type AssetInfo struct {
 	ImportanceLevel int       `json:"importance_level"`
 	Description     string    `json:"description"`
 	Status          int       `json:"status"`
+	InternetFacing  bool      `json:"internet_facing"`
+	NetworkZone     string    `json:"network_zone"`
 	Owner           *UserInfo `json:"owner,omitempty"`
 }
 
@@ -136,6 +146,8 @@ func (a *Asset) ToAssetInfo() AssetInfo {
 		ImportanceLevel: a.ImportanceLevel,
 		Description:     a.Description,
 		Status:          a.Status,
+		InternetFacing:  a.InternetFacing,
+		NetworkZone:     a.EffectiveNetworkZone(),
 	}
 
 	if a.Owner != nil {
@@ -169,6 +181,16 @@ func (a *Asset) GetStatusText() string {
 		return "下线"
 	default:
 		return "未知"
+	}
+}
+
+// EffectiveNetworkZone treats rows created before the exposure fields as internal.
+func (a *Asset) EffectiveNetworkZone() string {
+	switch a.NetworkZone {
+	case NetworkZoneDMZ, NetworkZoneProduction, NetworkZoneOT, NetworkZoneTest:
+		return a.NetworkZone
+	default:
+		return NetworkZoneInternal
 	}
 }
 

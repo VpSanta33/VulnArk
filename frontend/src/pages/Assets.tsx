@@ -1,3 +1,4 @@
+import { networkZoneLabel } from '../lib/risk';
 import { useLatestRequest, useSearchKeyword } from '../hooks/useListSearch';
 import { getErrorMessage } from '../lib/utils';
 import { useState, useEffect, useCallback } from 'react';
@@ -279,6 +280,7 @@ export function Assets() {
                       </TableCell>
                       <TableCell>
                         {getImportanceBadge(asset.importance_level)}
+                        <div className="text-xs text-gray-500 mt-1">{asset.internet_facing ? '对外暴露' : '不对外'} · {networkZoneLabel(asset.network_zone)}</div>
                       </TableCell>
                       <TableCell>
                         {asset.department || '-'}

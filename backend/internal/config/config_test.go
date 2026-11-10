@@ -241,3 +241,43 @@ func TestReadConfigPrivateOutboundOrigins(t *testing.T) {
 		t.Fatal("wildcard private origin accepted")
 	}
 }
+
+func TestRiskIntelDefaultsOverridesAndValidation(t *testing.T) {
+	isolatedConfigEnvironment(t)
+	privateConfig(t, validConfigYAML())
+	cfg, err := ReadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.RiskIntel.Enabled || cfg.RiskIntel.SyncIntervalHours != 24 || cfg.RiskIntel.RequestTimeoutSeconds != 30 ||
+		!strings.HasPrefix(cfg.RiskIntel.EPSSAPIURL, "https://api.first.org/") || !strings.HasPrefix(cfg.RiskIntel.KEVFeedURL, "https://www.cisa.gov/") {
+		t.Fatalf("unexpected risk intel defaults: %+v", cfg.RiskIntel)
+	}
+
+	privateConfig(t, validConfigYAML()+"risk_intel:\n  enabled: false\n  epss_api_url: \"not a url\"\n  sync_interval_hours: 0\n")
+	cfg, err = ReadConfig()
+	if err != nil || cfg.RiskIntel.Enabled {
+		t.Fatalf("disabled sync must not validate feed settings: %v", err)
+	}
+
+	t.Setenv("RISK_INTEL_SYNC_INTERVAL_HOURS", "6")
+	t.Setenv("RISK_INTEL_KEV_FEED_URL", "https://mirror.example.test/kev.json")
+	privateConfig(t, validConfigYAML())
+	cfg, err = ReadConfig()
+	if err != nil || cfg.RiskIntel.SyncIntervalHours != 6 || cfg.RiskIntel.KEVFeedURL != "https://mirror.example.test/kev.json" {
+		t.Fatalf("environment overrides not applied: %+v, %v", cfg, err)
+	}
+
+	for name, yaml := range map[string]string{
+		"scheme":      "risk_intel:\n  epss_api_url: \"ftp://example.test/epss\"\n",
+		"credentials": "risk_intel:\n  kev_feed_url: \"https://user:pass@example.test/kev.json\"\n",
+		"interval":    "risk_intel:\n  sync_interval_hours: 0\n",
+		"timeout":     "risk_intel:\n  request_timeout_seconds: 1\n",
+	} {
+		isolatedConfigEnvironment(t)
+		privateConfig(t, validConfigYAML()+yaml)
+		if _, err := ReadConfig(); err == nil {
+			t.Fatalf("%s: invalid risk_intel configuration accepted", name)
+		}
+	}
+}

@@ -16,7 +16,8 @@ const SystemSettings = lazy(() => import('../components/settings/SystemSettings'
 const NotificationSettings = lazy(() => import('../components/settings/NotificationSettings').then(m => ({ default: m.NotificationSettings })));
 const AISettings = lazy(() => import('../components/settings/AISettings').then(m => ({ default: m.AISettings })));
 const SLASettings = lazy(() => import('../components/settings/SLASettings').then(m => ({ default: m.SLASettings })));
-type SettingsTab = 'profile' | 'security' | 'system' | 'notifications' | 'ai' | 'sla';
+const RiskSettings = lazy(() => import('../components/settings/RiskSettings').then(m => ({ default: m.RiskSettings })));
+type SettingsTab = 'profile' | 'security' | 'system' | 'notifications' | 'ai' | 'sla' | 'risk';
 
 interface SettingsTabConfig {
   id: SettingsTab;
@@ -29,6 +30,7 @@ interface SettingsTabConfig {
 
 const settingsTabs: SettingsTabConfig[] = [
   { id: 'sla', label: 'SLA 策略', icon: Shield, description: '响应、修复期限与匹配策略', permission: 'sla:manage' },
+  { id: 'risk', label: '风险评分', icon: Shield, description: '评分权重、档位阈值与情报同步', permission: 'risk:manage' },
   {
     id: 'profile',
     label: '个人资料',
@@ -73,6 +75,8 @@ export function Settings() {
     switch (activeTab) {
       case 'sla':
         return <SLASettings />;
+      case 'risk':
+        return <RiskSettings />;
       case 'profile':
         return <ProfileSettings />;
       case 'security':

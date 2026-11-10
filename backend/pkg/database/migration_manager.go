@@ -62,6 +62,8 @@ func (m *MigrationManager) steps() []MigrationStep {
 		{"2026102805", "additive SLA retest and duplicate schema", m.migrateSchema},
 		{"2026102806", "default SLA policies and feature permissions", m.seedFeatureDefaults},
 		{"2026110301", "analytics and audit retention range indexes", m.addQueryIndexes},
+		{"2026111001", "additive risk scoring and threat intelligence schema", m.migrateSchema},
+		{"2026111002", "risk scoring permission", m.seedRiskDefaults},
 	}
 }
 
@@ -204,6 +206,7 @@ func migrationModels() []interface{} {
 		&model.Permission{}, &model.RolePermission{}, &model.SystemConfig{}, &model.AuditLog{},
 		&model.AIConfiguration{}, &model.AIProvider{}, &model.AIConversation{}, &model.AIMessage{},
 		&model.SLAPolicy{}, &model.VulnerabilityRetest{}, &model.VulnerabilityDuplicateLink{}, &model.VulnerabilityDuplicateIgnore{},
+		&model.RiskScoringConfig{}, &model.EPSSScore{}, &model.KEVEntry{}, &model.ThreatIntelSyncState{},
 	}
 }
 
@@ -740,6 +743,14 @@ func (m *MigrationManager) seedFeatureDefaults() error {
 		}
 		return nil
 	})
+}
+
+// seedRiskDefaults only adds the permission to the catalog. The scoring model
+// falls back to built-in defaults until an administrator saves one, and
+// existing vulnerabilities are scored by the background pass after start-up.
+func (m *MigrationManager) seedRiskDefaults() error {
+	permission := model.Permission{Name: "risk:manage", DisplayName: "管理风险评分模型", Module: "risk", Action: "manage", Resource: "risk", IsActive: true}
+	return m.db.Where("name = ?", permission.Name).FirstOrCreate(&permission).Error
 }
 
 func seedSystemConfigs(tx *gorm.DB) error {

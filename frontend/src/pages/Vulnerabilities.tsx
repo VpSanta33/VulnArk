@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Pagination } from '../components/ui/Pagination';
 import { vulnerabilitiesService } from '../services/vulnerabilities';
 import { Vulnerability, PaginatedResponse, VulnerabilitySearchParams } from '../types/api';
+import { formatEPSS, riskPriorities, riskPriorityMeta } from '../lib/risk';
 const VulnForm = lazy(() => import('../components/forms/VulnForm').then(m => ({ default: m.VulnForm })));
 const VulnerabilityDetail = lazy(() => import('../components/VulnerabilityDetail').then(m => ({ default: m.VulnerabilityDetail })));
 
@@ -31,6 +32,11 @@ export function Vulnerabilities() {
     else { next.delete('detail'); next.delete('section'); }
     setURLParams(next);
   };
+  const openDetail = (id: number, section: string) => {
+    const next = new URLSearchParams(urlParams);
+    next.set('detail', String(id)); next.set('section', section);
+    setURLParams(next);
+  };
   const [editingVuln, setEditingVuln] = useState<Vulnerability | null>(null);
   
   // Search and filter states
@@ -42,6 +48,9 @@ export function Vulnerabilities() {
     status: '',
     asset_id: undefined,
     assignee_id: undefined,
+    // Highest risk first is the working order of this page; the API default stays newest first.
+    sort_by: 'risk_score',
+    sort_order: 'desc',
   });
 
   const severityLevels = vulnerabilitiesService.getSeverityLevels();
@@ -160,6 +169,23 @@ export function Vulnerabilities() {
     );
   };
 
+  const getRiskCell = (vuln: Vulnerability) => {
+    if (vuln.risk_score == null) return <span className="text-gray-500" title="后台任务将自动补算">待评分</span>;
+    const priority = riskPriorityMeta(vuln.risk_priority);
+    return (
+      <button type="button" className="text-left space-y-1" title="查看评分构成" onClick={() => openDetail(vuln.id, 'risk')}>
+        <div className="flex items-center gap-2">
+          <span className="text-lg font-semibold tabular-nums">{vuln.risk_score.toFixed(1)}</span>
+          <Badge variant={priority?.variant || 'secondary'}>{vuln.risk_priority} {priority?.label}</Badge>
+        </div>
+        <div className="flex flex-wrap items-center gap-1 text-xs text-gray-500">
+          {vuln.risk_kev && <Badge variant="destructive" className="text-xs">KEV</Badge>}
+          {vuln.risk_epss != null && <span>EPSS {formatEPSS(vuln.risk_epss)}</span>}
+        </div>
+      </button>
+    );
+  };
+
   if (loading && !vulnerabilities) {
     return (
       <div className="space-y-6">
@@ -182,7 +208,7 @@ export function Vulnerabilities() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">漏洞管理</h1>
-          <p className="mt-2 text-sm text-gray-600">管理系统安全漏洞和修复进度</p>
+          <p className="mt-2 text-sm text-gray-600">管理系统安全漏洞和修复进度，默认按风险评分排序</p>
         </div>
         {hasPermission('vuln:create') && <Button onClick={handleCreateVuln}>
           <Plus className="h-4 w-4 mr-2" />
@@ -251,6 +277,20 @@ export function Vulnerabilities() {
               <Select value={searchParams.sla_status || ''} onChange={event => handleFilterChange('sla_status', event.target.value as VulnerabilitySearchParams['sla_status'])} options={[{ value: '', label: '全部期限' }, { value: 'overdue', label: '已逾期' }, { value: 'paused', label: '已暂停' }, { value: 'within', label: '期限内' }]} />
             </div>
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">风险优先级</label>
+              <Select aria-label="风险优先级" value={searchParams.risk_priority || ''} onChange={event => handleFilterChange('risk_priority', event.target.value as VulnerabilitySearchParams['risk_priority'])} options={[{ value: '', label: '全部档位' }, ...riskPriorities.map(item => ({ value: item.value, label: `${item.value} ${item.label}` }))]} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">排序</label>
+              <Select aria-label="排序" value={`${searchParams.sort_by || 'created_at'}:${searchParams.sort_order || 'desc'}`} onChange={event => { const [sortBy, sortOrder] = event.target.value.split(':') as [NonNullable<VulnerabilitySearchParams['sort_by']>, NonNullable<VulnerabilitySearchParams['sort_order']>]; setSearchParams(previous => ({ ...previous, sort_by: sortBy, sort_order: sortOrder, page: 1 })); }} options={[{ value: 'risk_score:desc', label: '风险评分从高到低' }, { value: 'risk_score:asc', label: '风险评分从低到高' }, { value: 'created_at:desc', label: '创建时间从新到旧' }, { value: 'created_at:asc', label: '创建时间从旧到新' }]} />
+            </div>
+            <div className="flex items-end pb-2">
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" checked={!!searchParams.kev_only} onChange={event => handleFilterChange('kev_only', event.target.checked || undefined)} />
+                仅显示 CISA KEV 在野利用漏洞
+              </label>
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 负责人
               </label>
@@ -284,6 +324,7 @@ export function Vulnerabilities() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>漏洞信息</TableHead>
+                    <TableHead>风险评分</TableHead>
                     <TableHead>严重程度</TableHead>
                     <TableHead>影响资产</TableHead>
                     <TableHead>负责人</TableHead>
@@ -317,6 +358,9 @@ export function Vulnerabilities() {
                             {getCvssScoreBadge(vuln.cvss_score)}
                           </div>
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        {getRiskCell(vuln)}
                       </TableCell>
                       <TableCell>
                         {getSeverityBadge(vuln.severity_level)}
@@ -370,7 +414,7 @@ export function Vulnerabilities() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8">
+                      <TableCell colSpan={9} className="text-center py-8">
                         <div className="text-gray-500">
                           <Shield className="h-12 w-12 mx-auto mb-4 text-gray-300" />
                           <p className="text-lg font-medium">暂无漏洞数据</p>

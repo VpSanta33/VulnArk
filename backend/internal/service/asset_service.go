@@ -1,9 +1,12 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/sirupsen/logrus"
 	"vulnark/internal/model"
 	"vulnark/internal/repository"
 )
@@ -20,10 +23,19 @@ type AssetService interface {
 	ValidateAsset(req *model.AssetCreateRequest) error
 }
 
+// ConfigureAssetRisk lets asset edits refresh the risk score of the
+// vulnerabilities on that asset.
+func ConfigureAssetRisk(a AssetService, risk RiskService) {
+	if implementation, ok := a.(*assetService); ok {
+		implementation.risk = risk
+	}
+}
+
 // assetService 资产服务实现
 type assetService struct {
 	assetRepo repository.AssetRepository
 	userRepo  repository.UserRepository
+	risk      RiskService
 }
 
 // NewAssetService 创建资产服务
@@ -79,6 +91,11 @@ func (s *assetService) CreateAsset(req *model.AssetCreateRequest) (*model.Asset,
 		ImportanceLevel: req.ImportanceLevel,
 		Description:     req.Description,
 		Status:          1, // 默认正常状态
+		InternetFacing:  req.InternetFacing,
+		NetworkZone:     req.NetworkZone,
+	}
+	if asset.NetworkZone == "" {
+		asset.NetworkZone = model.NetworkZoneInternal
 	}
 
 	// 设置默认重要性等级
@@ -110,6 +127,7 @@ func (s *assetService) UpdateAsset(id uint, req *model.AssetUpdateRequest) error
 	if err != nil {
 		return err
 	}
+	previousImportance := asset.ImportanceLevel
 
 	// 更新字段
 	if req.Name != "" {
@@ -184,7 +202,27 @@ func (s *assetService) UpdateAsset(id uint, req *model.AssetUpdateRequest) error
 		asset.Status = *req.Status
 	}
 
-	return s.assetRepo.Update(asset)
+	riskInputsChanged := asset.ImportanceLevel != previousImportance
+	if req.InternetFacing != nil && asset.InternetFacing != *req.InternetFacing {
+		asset.InternetFacing = *req.InternetFacing
+		riskInputsChanged = true
+	}
+	if req.NetworkZone != "" && asset.EffectiveNetworkZone() != req.NetworkZone {
+		asset.NetworkZone = req.NetworkZone
+		riskInputsChanged = true
+	}
+
+	if err := s.assetRepo.Update(asset); err != nil {
+		return err
+	}
+	if riskInputsChanged && s.risk != nil {
+		// The asset is already saved; a scoring failure is repaired by the
+		// next rescoring pass and must not fail the edit.
+		if _, err := s.risk.Rescore(context.Background(), repository.RiskRescoreScope{AssetID: id}, time.Now()); err != nil {
+			logrus.WithError(err).Warn("资产变更后的风险评分暂未刷新")
+		}
+	}
+	return nil
 }
 
 // DeleteAsset 删除资产
@@ -268,6 +306,11 @@ func (s *assetService) ImportAssets(req *model.AssetImportRequest) ([]string, er
 			ImportanceLevel: assetReq.ImportanceLevel,
 			Description:     assetReq.Description,
 			Status:          1, // 默认正常状态
+			InternetFacing:  assetReq.InternetFacing,
+			NetworkZone:     assetReq.NetworkZone,
+		}
+		if asset.NetworkZone == "" {
+			asset.NetworkZone = model.NetworkZoneInternal
 		}
 
 		// 设置默认重要性等级
@@ -316,6 +359,12 @@ func (s *assetService) ValidateAsset(req *model.AssetCreateRequest) error {
 		if req.ImportanceLevel < 1 || req.ImportanceLevel > 3 {
 			return errors.New("无效的重要性等级")
 		}
+	}
+
+	switch req.NetworkZone {
+	case "", model.NetworkZoneInternal, model.NetworkZoneDMZ, model.NetworkZoneProduction, model.NetworkZoneOT, model.NetworkZoneTest:
+	default:
+		return errors.New("无效的网络区域")
 	}
 
 	return nil

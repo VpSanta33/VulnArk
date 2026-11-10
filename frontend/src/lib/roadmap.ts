@@ -25,7 +25,7 @@ export function notificationPreferences(settings: NotificationSettings): Notific
 
 export function vulnerabilityDetailURL(id: number, section?: string): string {
   const query = new URLSearchParams({ detail: String(id) });
-  if (section && ['sla', 'retests', 'duplicates'].includes(section)) query.set('section', section);
+  if (section && ['risk', 'sla', 'retests', 'duplicates'].includes(section)) query.set('section', section);
   return `/vulnerabilities?${query}`;
 }
 export function notificationTarget(notification: InboxNotification): string | undefined {
