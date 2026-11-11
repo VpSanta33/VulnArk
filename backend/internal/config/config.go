@@ -24,6 +24,17 @@ type Config struct {
 	Email    EmailConfig    `mapstructure:"email"`
 	Log      LogConfig      `mapstructure:"log"`
 	CORS     CORSConfig     `mapstructure:"cors"`
+	// RiskIntel 控制EPSS与KEV本地缓存的后台同步；评分模型本身在界面中配置。
+	RiskIntel RiskIntelConfig `mapstructure:"risk_intel"`
+}
+
+// RiskIntelConfig 的地址只能由部署管理员在配置文件或环境变量中设置。
+type RiskIntelConfig struct {
+	Enabled               bool   `mapstructure:"enabled"`
+	EPSSAPIURL            string `mapstructure:"epss_api_url"`
+	KEVFeedURL            string `mapstructure:"kev_feed_url"`
+	SyncIntervalHours     int    `mapstructure:"sync_interval_hours"`
+	RequestTimeoutSeconds int    `mapstructure:"request_timeout_seconds"`
 }
 
 type ServerConfig struct {
@@ -178,6 +189,10 @@ func setDefaults(v *viper.Viper) {
 		"cors.exposed_headers":   []string{"Content-Length", "Content-Type"},
 		"cors.allow_credentials": false, "cors.max_age": 43200,
 		"log.level": "info", "log.format": "json", "log.output": "stdout",
+		"risk_intel.enabled":             true,
+		"risk_intel.epss_api_url":        "https://api.first.org/data/v1/epss",
+		"risk_intel.kev_feed_url":        "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
+		"risk_intel.sync_interval_hours": 24, "risk_intel.request_timeout_seconds": 30,
 	}
 	for key, value := range defaults {
 		v.SetDefault(key, value)
@@ -234,6 +249,20 @@ func (cfg *Config) Validate() error {
 			if err != nil || strings.Contains(origin, "*") || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" || u.Opaque != "" {
 				return errors.New("cors.allowed_origins must list explicit HTTP origins without wildcards, paths, or credentials")
 			}
+		}
+	}
+	if cfg.RiskIntel.Enabled {
+		for _, feed := range []string{cfg.RiskIntel.EPSSAPIURL, cfg.RiskIntel.KEVFeedURL} {
+			u, err := url.Parse(feed)
+			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || u.Fragment != "" {
+				return errors.New("risk_intel.epss_api_url and risk_intel.kev_feed_url must be HTTP(S) URLs without credentials")
+			}
+		}
+		if cfg.RiskIntel.SyncIntervalHours < 1 || cfg.RiskIntel.SyncIntervalHours > 720 {
+			return errors.New("risk_intel.sync_interval_hours must be between 1 and 720")
+		}
+		if cfg.RiskIntel.RequestTimeoutSeconds < 5 || cfg.RiskIntel.RequestTimeoutSeconds > 120 {
+			return errors.New("risk_intel.request_timeout_seconds must be between 5 and 120")
 		}
 	}
 	if cfg.Email.Username != "" && cfg.Email.Password == "" {

@@ -68,3 +68,17 @@ log:
   level: "info"
   format: "json"
   output: "stdout"
+
+risk_intel:
+  # Background sync of FIRST EPSS scores (only for CVE IDs recorded in VulnArk)
+  # and the CISA KEV catalog into local cache tables. Risk scoring reads the
+  # cache only; a failed sync keeps the previous data and is retried later.
+  # Set enabled to false for air-gapped deployments: scoring then uses CVSS,
+  # asset importance and exposure.
+  enabled: true
+  # Point these at an internal mirror if the public feeds are unreachable. A
+  # private mirror must also be listed in security.outbound_private_origins.
+  epss_api_url: "https://api.first.org/data/v1/epss"
+  kev_feed_url: "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+  sync_interval_hours: 24 # 1-720
+  request_timeout_seconds: 30 # 5-120

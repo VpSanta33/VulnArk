@@ -5592,6 +5592,323 @@
                 }
             }
         },
+        "/api/v1/risk/config": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 vuln:read 或 risk:manage 权限。返回当前权重、档位阈值、各档建议修复期限、KEV 保底档位及内置默认值；从未保存过时返回默认模型。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "风险优先级"
+                ],
+                "summary": "获取风险评分模型",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.RiskConfigResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少权限",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "读取配置失败",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 risk:manage 权限。权重为 0-100 的相对值（无需合计 100），CVSS、资产重要性、暴露面三项不能同时为 0；阈值须满足 0 \u003c P3 \u003c P2 \u003c P1 \u003c= 100；建议期限为小时且 P1 \u003c= P2 \u003c= P3 \u003c= P4；kev_min_priority 为空、P1、P2 或 P3。保存后立即按新模型重算全部漏洞并返回重算数量。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "风险优先级"
+                ],
+                "summary": "更新风险评分模型",
+                "parameters": [
+                    {
+                        "description": "评分模型",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.RiskConfig"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.RiskRescoreResult"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "配置无效",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少risk:manage权限",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "保存或重算失败",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/risk/intel/status": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 vuln:read 或 risk:manage 权限。返回 EPSS 与 KEV 本地缓存的最近尝试、最近成功时间、最近错误、条目数和数据版本。同步失败时保留已有缓存，stale 表示超过两个同步周期没有成功。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "风险优先级"
+                ],
+                "summary": "获取威胁情报缓存状态",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.ThreatIntelStatus"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少权限",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "读取状态失败",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/risk/intel/sync": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 risk:manage 权限。立即刷新 KEV 目录和已录入 CVE 的 EPSS 分数，并重算带 CVE 的漏洞。单个数据源失败时在 errors 中说明，已有缓存保持不变；后台同步进行中返回 409，配置中禁用同步时返回 400。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "风险优先级"
+                ],
+                "summary": "立即同步威胁情报",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.ThreatIntelSyncResult"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "同步已禁用",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少risk:manage权限",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "409": {
+                        "description": "同步正在进行",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "429": {
+                        "description": "请求过于频繁",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "同步失败",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/risk/recalculate": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 risk:manage 权限。按当前模型和本地缓存重算全部漏洞，不访问外部接口。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "风险优先级"
+                ],
+                "summary": "重算全部漏洞的风险评分",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.RiskRescoreResult"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少risk:manage权限",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "429": {
+                        "description": "请求过于频繁",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "重算失败",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/role-permissions/{role_id}": {
             "get": {
                 "security": [
@@ -8537,6 +8854,52 @@
                         "description": "SLA状态",
                         "name": "sla_status",
                         "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "P1",
+                            "P2",
+                            "P3",
+                            "P4"
+                        ],
+                        "type": "string",
+                        "description": "风险优先级档位",
+                        "name": "risk_priority",
+                        "in": "query"
+                    },
+                    {
+                        "maximum": 100,
+                        "minimum": 0,
+                        "type": "number",
+                        "description": "最低风险评分",
+                        "name": "min_risk_score",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "仅显示已收录于CISA KEV的漏洞",
+                        "name": "kev_only",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "created_at",
+                            "risk_score"
+                        ],
+                        "type": "string",
+                        "description": "排序字段，默认按创建时间",
+                        "name": "sort_by",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "type": "string",
+                        "description": "排序方向，默认降序；未评分的漏洞始终排在最后",
+                        "name": "sort_order",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -10306,6 +10669,83 @@
                 }
             }
         },
+        "/api/v1/vulnerabilities/{id}/risk": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "需要 vuln:read 权限。返回 0-100 的风险评分、优先级档位、各因子（CVSS、EPSS、KEV、资产重要性、暴露面）的权重、取值与贡献分，以及按档位建议的修复期限与当前 SLA 期限的对比。无数据的因子 applicable=false，其权重按比例分配给其余因子。评分只读取本地缓存，不访问外部接口。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "风险优先级"
+                ],
+                "summary": "获取漏洞风险评分构成",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "漏洞ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.VulnerabilityRisk"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "漏洞ID无效",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "未认证",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "缺少vuln:read权限",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "漏洞不存在",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "评分失败",
+                        "schema": {
+                            "$ref": "#/definitions/model.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/vulnerabilities/{id}/sla": {
             "get": {
                 "security": [
@@ -11205,10 +11645,18 @@
                     "description": "1-高，2-中，3-低",
                     "type": "integer"
                 },
+                "internet_facing": {
+                    "description": "Exposure feeds the risk score. Existing rows read as internal, not internet-facing.",
+                    "type": "boolean"
+                },
                 "ip_address": {
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "network_zone": {
+                    "description": "internal, dmz, production, ot, test",
                     "type": "string"
                 },
                 "os": {
@@ -11313,6 +11761,9 @@
                         3
                     ]
                 },
+                "internet_facing": {
+                    "type": "boolean"
+                },
                 "ip_address": {
                     "type": "string"
                 },
@@ -11320,6 +11771,16 @@
                     "type": "string",
                     "maxLength": 100,
                     "minLength": 1
+                },
+                "network_zone": {
+                    "type": "string",
+                    "enum": [
+                        "internal",
+                        "dmz",
+                        "production",
+                        "ot",
+                        "test"
+                    ]
                 },
                 "os": {
                     "type": "string"
@@ -11385,10 +11846,16 @@
                 "importance_level": {
                     "type": "integer"
                 },
+                "internet_facing": {
+                    "type": "boolean"
+                },
                 "ip_address": {
                     "type": "string"
                 },
                 "name": {
+                    "type": "string"
+                },
+                "network_zone": {
                     "type": "string"
                 },
                 "os": {
@@ -11527,6 +11994,9 @@
                         3
                     ]
                 },
+                "internet_facing": {
+                    "type": "boolean"
+                },
                 "ip_address": {
                     "type": "string"
                 },
@@ -11534,6 +12004,16 @@
                     "type": "string",
                     "maxLength": 100,
                     "minLength": 1
+                },
+                "network_zone": {
+                    "type": "string",
+                    "enum": [
+                        "internal",
+                        "dmz",
+                        "production",
+                        "ot",
+                        "test"
+                    ]
                 },
                 "os": {
                     "type": "string"
@@ -12387,6 +12867,35 @@
         "model.KBMetadata": {
             "type": "object",
             "additionalProperties": true
+        },
+        "model.KEVEntry": {
+            "type": "object",
+            "properties": {
+                "cve_id": {
+                    "type": "string"
+                },
+                "date_added": {
+                    "type": "string"
+                },
+                "due_date": {
+                    "type": "string"
+                },
+                "known_ransomware_use": {
+                    "type": "string"
+                },
+                "product": {
+                    "type": "string"
+                },
+                "synced_at": {
+                    "type": "string"
+                },
+                "vendor_project": {
+                    "type": "string"
+                },
+                "vulnerability_name": {
+                    "type": "string"
+                }
+            }
         },
         "model.KnowledgeBase": {
             "type": "object",
@@ -13515,6 +14024,137 @@
                 }
             }
         },
+        "model.RiskConfig": {
+            "type": "object",
+            "properties": {
+                "kev_min_priority": {
+                    "description": "KEVMinPriority is the lowest tier a KEV-listed vulnerability may receive.\nEmpty disables the floor.",
+                    "type": "string"
+                },
+                "sla_hours": {
+                    "$ref": "#/definitions/model.RiskSLAHours"
+                },
+                "thresholds": {
+                    "$ref": "#/definitions/model.RiskThresholds"
+                },
+                "weights": {
+                    "$ref": "#/definitions/model.RiskWeights"
+                }
+            }
+        },
+        "model.RiskConfigResponse": {
+            "type": "object",
+            "properties": {
+                "config": {
+                    "$ref": "#/definitions/model.RiskConfig"
+                },
+                "defaults": {
+                    "$ref": "#/definitions/model.RiskConfig"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.RiskFactor": {
+            "type": "object",
+            "properties": {
+                "applicable": {
+                    "description": "Applicable is false when the factor has no data for this vulnerability;\nits weight is then redistributed over the applicable factors.",
+                    "type": "boolean"
+                },
+                "contribution": {
+                    "description": "Contribution is EffectiveWeight * Value, in points.",
+                    "type": "number"
+                },
+                "detail": {
+                    "type": "string"
+                },
+                "effective_weight": {
+                    "description": "EffectiveWeight is the maximum number of points this factor can add to\nthis vulnerability. Effective weights of applicable factors sum to 100.",
+                    "type": "number"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "raw_value": {
+                    "type": "string"
+                },
+                "value": {
+                    "description": "Value is the normalized factor value between 0 and 1.",
+                    "type": "number"
+                },
+                "weight": {
+                    "description": "Weight is the configured relative weight.",
+                    "type": "number"
+                }
+            }
+        },
+        "model.RiskRescoreResult": {
+            "type": "object",
+            "properties": {
+                "rescored": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.RiskSLAHours": {
+            "type": "object",
+            "properties": {
+                "p1": {
+                    "type": "integer"
+                },
+                "p2": {
+                    "type": "integer"
+                },
+                "p3": {
+                    "type": "integer"
+                },
+                "p4": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.RiskThresholds": {
+            "type": "object",
+            "properties": {
+                "p1": {
+                    "type": "number"
+                },
+                "p2": {
+                    "type": "number"
+                },
+                "p3": {
+                    "type": "number"
+                }
+            }
+        },
+        "model.RiskWeights": {
+            "type": "object",
+            "properties": {
+                "asset_importance": {
+                    "type": "number"
+                },
+                "cvss": {
+                    "type": "number"
+                },
+                "epss": {
+                    "type": "number"
+                },
+                "exposure": {
+                    "type": "number"
+                },
+                "kev": {
+                    "type": "number"
+                }
+            }
+        },
         "model.Role": {
             "type": "object",
             "required": [
@@ -14231,6 +14871,76 @@
                 }
             }
         },
+        "model.ThreatIntelSourceStatus": {
+            "type": "object",
+            "properties": {
+                "consecutive_failures": {
+                    "type": "integer"
+                },
+                "last_attempt_at": {
+                    "type": "string"
+                },
+                "last_error": {
+                    "type": "string"
+                },
+                "last_success_at": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "record_count": {
+                    "type": "integer"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "source_version": {
+                    "type": "string"
+                },
+                "stale": {
+                    "description": "Stale is true when there has been no success within two sync intervals.",
+                    "type": "boolean"
+                }
+            }
+        },
+        "model.ThreatIntelStatus": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "sources": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.ThreatIntelSourceStatus"
+                    }
+                },
+                "sync_interval_hours": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.ThreatIntelSyncResult": {
+            "type": "object",
+            "properties": {
+                "epss_updated": {
+                    "type": "integer"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "kev_entries": {
+                    "type": "integer"
+                },
+                "rescored": {
+                    "type": "integer"
+                }
+            }
+        },
         "model.TimeRangeStats": {
             "type": "object",
             "properties": {
@@ -14805,6 +15515,22 @@
                 "response_overdue_level": {
                     "type": "integer"
                 },
+                "risk_epss": {
+                    "type": "number"
+                },
+                "risk_kev": {
+                    "type": "boolean"
+                },
+                "risk_priority": {
+                    "type": "string"
+                },
+                "risk_score": {
+                    "description": "Risk fields are a stored snapshot so the list can sort and filter in SQL.\nThey stay NULL/empty until the first scoring pass after migration.",
+                    "type": "number"
+                },
+                "risk_scored_at": {
+                    "type": "string"
+                },
                 "severity_level": {
                     "type": "integer",
                     "enum": [
@@ -15064,6 +15790,24 @@
                 "response_remaining_seconds": {
                     "type": "integer"
                 },
+                "risk_epss": {
+                    "type": "number"
+                },
+                "risk_kev": {
+                    "type": "boolean"
+                },
+                "risk_priority": {
+                    "type": "string"
+                },
+                "risk_priority_text": {
+                    "type": "string"
+                },
+                "risk_score": {
+                    "type": "number"
+                },
+                "risk_scored_at": {
+                    "type": "string"
+                },
                 "severity_level": {
                     "type": "integer"
                 },
@@ -15154,6 +15898,76 @@
                 },
                 "tester_name": {
                     "type": "string"
+                },
+                "vulnerability_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "model.VulnerabilityRisk": {
+            "type": "object",
+            "properties": {
+                "adjustments": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "base_priority": {
+                    "description": "BasePriority follows the thresholds only; Priority also applies rules\nsuch as the KEV floor. Adjustments explains every difference.",
+                    "type": "string"
+                },
+                "current_fix_due_at": {
+                    "type": "string"
+                },
+                "cve_id": {
+                    "type": "string"
+                },
+                "epss": {
+                    "type": "number"
+                },
+                "epss_date": {
+                    "type": "string"
+                },
+                "epss_percentile": {
+                    "type": "number"
+                },
+                "factors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.RiskFactor"
+                    }
+                },
+                "kev": {
+                    "$ref": "#/definitions/model.KEVEntry"
+                },
+                "kev_listed": {
+                    "type": "boolean"
+                },
+                "priority": {
+                    "type": "string"
+                },
+                "priority_text": {
+                    "type": "string"
+                },
+                "recommended_fix_due_at": {
+                    "type": "string"
+                },
+                "recommended_sla_hours": {
+                    "type": "integer"
+                },
+                "score": {
+                    "type": "number"
+                },
+                "scored_at": {
+                    "type": "string"
+                },
+                "sla_alignment": {
+                    "description": "SLAAlignment is none (no SLA deadline), aligned (the SLA deadline is not\nlater than the recommendation) or later.",
+                    "type": "string"
+                },
+                "thresholds": {
+                    "$ref": "#/definitions/model.RiskThresholds"
                 },
                 "vulnerability_id": {
                     "type": "integer"

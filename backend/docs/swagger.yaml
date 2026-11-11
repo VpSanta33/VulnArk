@@ -306,9 +306,16 @@ definitions:
       importance_level:
         description: 1-高，2-中，3-低
         type: integer
+      internet_facing:
+        description: Exposure feeds the risk score. Existing rows read as internal,
+          not internet-facing.
+        type: boolean
       ip_address:
         type: string
       name:
+        type: string
+      network_zone:
+        description: internal, dmz, production, ot, test
         type: string
       os:
         type: string
@@ -379,11 +386,21 @@ definitions:
         - 2
         - 3
         type: integer
+      internet_facing:
+        type: boolean
       ip_address:
         type: string
       name:
         maxLength: 100
         minLength: 1
+        type: string
+      network_zone:
+        enum:
+        - internal
+        - dmz
+        - production
+        - ot
+        - test
         type: string
       os:
         type: string
@@ -431,9 +448,13 @@ definitions:
         type: integer
       importance_level:
         type: integer
+      internet_facing:
+        type: boolean
       ip_address:
         type: string
       name:
+        type: string
+      network_zone:
         type: string
       os:
         type: string
@@ -526,11 +547,21 @@ definitions:
         - 2
         - 3
         type: integer
+      internet_facing:
+        type: boolean
       ip_address:
         type: string
       name:
         maxLength: 100
         minLength: 1
+        type: string
+      network_zone:
+        enum:
+        - internal
+        - dmz
+        - production
+        - ot
+        - test
         type: string
       os:
         type: string
@@ -1107,6 +1138,25 @@ definitions:
     type: object
   model.KBMetadata:
     additionalProperties: true
+    type: object
+  model.KEVEntry:
+    properties:
+      cve_id:
+        type: string
+      date_added:
+        type: string
+      due_date:
+        type: string
+      known_ransomware_use:
+        type: string
+      product:
+        type: string
+      synced_at:
+        type: string
+      vendor_project:
+        type: string
+      vulnerability_name:
+        type: string
     type: object
   model.KnowledgeBase:
     properties:
@@ -1877,6 +1927,99 @@ definitions:
         description: 中位数审核时间（天）
         type: number
     type: object
+  model.RiskConfig:
+    properties:
+      kev_min_priority:
+        description: |-
+          KEVMinPriority is the lowest tier a KEV-listed vulnerability may receive.
+          Empty disables the floor.
+        type: string
+      sla_hours:
+        $ref: '#/definitions/model.RiskSLAHours'
+      thresholds:
+        $ref: '#/definitions/model.RiskThresholds'
+      weights:
+        $ref: '#/definitions/model.RiskWeights'
+    type: object
+  model.RiskConfigResponse:
+    properties:
+      config:
+        $ref: '#/definitions/model.RiskConfig'
+      defaults:
+        $ref: '#/definitions/model.RiskConfig'
+      updated_at:
+        type: string
+      updated_by:
+        type: integer
+    type: object
+  model.RiskFactor:
+    properties:
+      applicable:
+        description: |-
+          Applicable is false when the factor has no data for this vulnerability;
+          its weight is then redistributed over the applicable factors.
+        type: boolean
+      contribution:
+        description: Contribution is EffectiveWeight * Value, in points.
+        type: number
+      detail:
+        type: string
+      effective_weight:
+        description: |-
+          EffectiveWeight is the maximum number of points this factor can add to
+          this vulnerability. Effective weights of applicable factors sum to 100.
+        type: number
+      key:
+        type: string
+      label:
+        type: string
+      raw_value:
+        type: string
+      value:
+        description: Value is the normalized factor value between 0 and 1.
+        type: number
+      weight:
+        description: Weight is the configured relative weight.
+        type: number
+    type: object
+  model.RiskRescoreResult:
+    properties:
+      rescored:
+        type: integer
+    type: object
+  model.RiskSLAHours:
+    properties:
+      p1:
+        type: integer
+      p2:
+        type: integer
+      p3:
+        type: integer
+      p4:
+        type: integer
+    type: object
+  model.RiskThresholds:
+    properties:
+      p1:
+        type: number
+      p2:
+        type: number
+      p3:
+        type: number
+    type: object
+  model.RiskWeights:
+    properties:
+      asset_importance:
+        type: number
+      cvss:
+        type: number
+      epss:
+        type: number
+      exposure:
+        type: number
+      kev:
+        type: number
+    type: object
   model.Role:
     properties:
       created_at:
@@ -2364,6 +2507,53 @@ definitions:
       variables:
         type: string
     type: object
+  model.ThreatIntelSourceStatus:
+    properties:
+      consecutive_failures:
+        type: integer
+      last_attempt_at:
+        type: string
+      last_error:
+        type: string
+      last_success_at:
+        type: string
+      name:
+        type: string
+      record_count:
+        type: integer
+      source:
+        type: string
+      source_version:
+        type: string
+      stale:
+        description: Stale is true when there has been no success within two sync
+          intervals.
+        type: boolean
+    type: object
+  model.ThreatIntelStatus:
+    properties:
+      enabled:
+        type: boolean
+      sources:
+        items:
+          $ref: '#/definitions/model.ThreatIntelSourceStatus'
+        type: array
+      sync_interval_hours:
+        type: integer
+    type: object
+  model.ThreatIntelSyncResult:
+    properties:
+      epss_updated:
+        type: integer
+      errors:
+        items:
+          type: string
+        type: array
+      kev_entries:
+        type: integer
+      rescored:
+        type: integer
+    type: object
   model.TimeRangeStats:
     properties:
       last_month:
@@ -2743,6 +2933,19 @@ definitions:
         type: boolean
       response_overdue_level:
         type: integer
+      risk_epss:
+        type: number
+      risk_kev:
+        type: boolean
+      risk_priority:
+        type: string
+      risk_score:
+        description: |-
+          Risk fields are a stored snapshot so the list can sort and filter in SQL.
+          They stay NULL/empty until the first scoring pass after migration.
+        type: number
+      risk_scored_at:
+        type: string
       severity_level:
         enum:
         - 1
@@ -2918,6 +3121,18 @@ definitions:
         type: integer
       response_remaining_seconds:
         type: integer
+      risk_epss:
+        type: number
+      risk_kev:
+        type: boolean
+      risk_priority:
+        type: string
+      risk_priority_text:
+        type: string
+      risk_score:
+        type: number
+      risk_scored_at:
+        type: string
       severity_level:
         type: integer
       severity_level_text:
@@ -2978,6 +3193,57 @@ definitions:
         type: integer
       tester_name:
         type: string
+      vulnerability_id:
+        type: integer
+    type: object
+  model.VulnerabilityRisk:
+    properties:
+      adjustments:
+        items:
+          type: string
+        type: array
+      base_priority:
+        description: |-
+          BasePriority follows the thresholds only; Priority also applies rules
+          such as the KEV floor. Adjustments explains every difference.
+        type: string
+      current_fix_due_at:
+        type: string
+      cve_id:
+        type: string
+      epss:
+        type: number
+      epss_date:
+        type: string
+      epss_percentile:
+        type: number
+      factors:
+        items:
+          $ref: '#/definitions/model.RiskFactor'
+        type: array
+      kev:
+        $ref: '#/definitions/model.KEVEntry'
+      kev_listed:
+        type: boolean
+      priority:
+        type: string
+      priority_text:
+        type: string
+      recommended_fix_due_at:
+        type: string
+      recommended_sla_hours:
+        type: integer
+      score:
+        type: number
+      scored_at:
+        type: string
+      sla_alignment:
+        description: |-
+          SLAAlignment is none (no SLA deadline), aligned (the SLA deadline is not
+          later than the recommendation) or later.
+        type: string
+      thresholds:
+        $ref: '#/definitions/model.RiskThresholds'
       vulnerability_id:
         type: integer
     type: object
@@ -6468,6 +6734,198 @@ paths:
       summary: 退出所有会话
       tags:
       - 用户管理
+  /api/v1/risk/config:
+    get:
+      description: 需要 vuln:read 或 risk:manage 权限。返回当前权重、档位阈值、各档建议修复期限、KEV 保底档位及内置默认值；从未保存过时返回默认模型。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.RiskConfigResponse'
+              type: object
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/model.Response'
+        "403":
+          description: 缺少权限
+          schema:
+            $ref: '#/definitions/model.Response'
+        "500":
+          description: 读取配置失败
+          schema:
+            $ref: '#/definitions/model.Response'
+      security:
+      - ApiKeyAuth: []
+      summary: 获取风险评分模型
+      tags:
+      - 风险优先级
+    put:
+      consumes:
+      - application/json
+      description: 需要 risk:manage 权限。权重为 0-100 的相对值（无需合计 100），CVSS、资产重要性、暴露面三项不能同时为
+        0；阈值须满足 0 < P3 < P2 < P1 <= 100；建议期限为小时且 P1 <= P2 <= P3 <= P4；kev_min_priority
+        为空、P1、P2 或 P3。保存后立即按新模型重算全部漏洞并返回重算数量。
+      parameters:
+      - description: 评分模型
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/model.RiskConfig'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.RiskRescoreResult'
+              type: object
+        "400":
+          description: 配置无效
+          schema:
+            $ref: '#/definitions/model.Response'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/model.Response'
+        "403":
+          description: 缺少risk:manage权限
+          schema:
+            $ref: '#/definitions/model.Response'
+        "500":
+          description: 保存或重算失败
+          schema:
+            $ref: '#/definitions/model.Response'
+      security:
+      - ApiKeyAuth: []
+      summary: 更新风险评分模型
+      tags:
+      - 风险优先级
+  /api/v1/risk/intel/status:
+    get:
+      description: 需要 vuln:read 或 risk:manage 权限。返回 EPSS 与 KEV 本地缓存的最近尝试、最近成功时间、最近错误、条目数和数据版本。同步失败时保留已有缓存，stale
+        表示超过两个同步周期没有成功。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.ThreatIntelStatus'
+              type: object
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/model.Response'
+        "403":
+          description: 缺少权限
+          schema:
+            $ref: '#/definitions/model.Response'
+        "500":
+          description: 读取状态失败
+          schema:
+            $ref: '#/definitions/model.Response'
+      security:
+      - ApiKeyAuth: []
+      summary: 获取威胁情报缓存状态
+      tags:
+      - 风险优先级
+  /api/v1/risk/intel/sync:
+    post:
+      description: 需要 risk:manage 权限。立即刷新 KEV 目录和已录入 CVE 的 EPSS 分数，并重算带 CVE 的漏洞。单个数据源失败时在
+        errors 中说明，已有缓存保持不变；后台同步进行中返回 409，配置中禁用同步时返回 400。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.ThreatIntelSyncResult'
+              type: object
+        "400":
+          description: 同步已禁用
+          schema:
+            $ref: '#/definitions/model.Response'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/model.Response'
+        "403":
+          description: 缺少risk:manage权限
+          schema:
+            $ref: '#/definitions/model.Response'
+        "409":
+          description: 同步正在进行
+          schema:
+            $ref: '#/definitions/model.Response'
+        "429":
+          description: 请求过于频繁
+          schema:
+            $ref: '#/definitions/model.Response'
+        "500":
+          description: 同步失败
+          schema:
+            $ref: '#/definitions/model.Response'
+      security:
+      - ApiKeyAuth: []
+      summary: 立即同步威胁情报
+      tags:
+      - 风险优先级
+  /api/v1/risk/recalculate:
+    post:
+      description: 需要 risk:manage 权限。按当前模型和本地缓存重算全部漏洞，不访问外部接口。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.RiskRescoreResult'
+              type: object
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/model.Response'
+        "403":
+          description: 缺少risk:manage权限
+          schema:
+            $ref: '#/definitions/model.Response'
+        "429":
+          description: 请求过于频繁
+          schema:
+            $ref: '#/definitions/model.Response'
+        "500":
+          description: 重算失败
+          schema:
+            $ref: '#/definitions/model.Response'
+      security:
+      - ApiKeyAuth: []
+      summary: 重算全部漏洞的风险评分
+      tags:
+      - 风险优先级
   /api/v1/role-permissions/{role_id}:
     get:
       description: 获取指定角色的权限列表
@@ -8260,6 +8718,39 @@ paths:
         in: query
         name: sla_status
         type: string
+      - description: 风险优先级档位
+        enum:
+        - P1
+        - P2
+        - P3
+        - P4
+        in: query
+        name: risk_priority
+        type: string
+      - description: 最低风险评分
+        in: query
+        maximum: 100
+        minimum: 0
+        name: min_risk_score
+        type: number
+      - description: 仅显示已收录于CISA KEV的漏洞
+        in: query
+        name: kev_only
+        type: boolean
+      - description: 排序字段，默认按创建时间
+        enum:
+        - created_at
+        - risk_score
+        in: query
+        name: sort_by
+        type: string
+      - description: 排序方向，默认降序；未评分的漏洞始终排在最后
+        enum:
+        - asc
+        - desc
+        in: query
+        name: sort_order
+        type: string
       produces:
       - application/json
       responses:
@@ -9025,6 +9516,54 @@ paths:
       summary: 下载复测证据
       tags:
       - 漏洞复测
+  /api/v1/vulnerabilities/{id}/risk:
+    get:
+      description: 需要 vuln:read 权限。返回 0-100 的风险评分、优先级档位、各因子（CVSS、EPSS、KEV、资产重要性、暴露面）的权重、取值与贡献分，以及按档位建议的修复期限与当前
+        SLA 期限的对比。无数据的因子 applicable=false，其权重按比例分配给其余因子。评分只读取本地缓存，不访问外部接口。
+      parameters:
+      - description: 漏洞ID
+        in: path
+        minimum: 1
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.VulnerabilityRisk'
+              type: object
+        "400":
+          description: 漏洞ID无效
+          schema:
+            $ref: '#/definitions/model.Response'
+        "401":
+          description: 未认证
+          schema:
+            $ref: '#/definitions/model.Response'
+        "403":
+          description: 缺少vuln:read权限
+          schema:
+            $ref: '#/definitions/model.Response'
+        "404":
+          description: 漏洞不存在
+          schema:
+            $ref: '#/definitions/model.Response'
+        "500":
+          description: 评分失败
+          schema:
+            $ref: '#/definitions/model.Response'
+      security:
+      - ApiKeyAuth: []
+      summary: 获取漏洞风险评分构成
+      tags:
+      - 风险优先级
   /api/v1/vulnerabilities/{id}/sla:
     get:
       description: 需要 vuln:read 权限。返回策略快照、当前计时周期、响应/修复期限及暂停信息。sla_status 为 none、within、paused、overdue

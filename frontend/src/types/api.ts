@@ -65,6 +65,9 @@ export interface Asset {
   business_line?: string;
   importance_level: 1 | 2 | 3; // 1-高，2-中，3-低
   description?: string;
+  // Exposure inputs of the risk score.
+  internet_facing?: boolean;
+  network_zone?: 'internal' | 'dmz' | 'production' | 'ot' | 'test';
   created_at?: string;
   updated_at?: string;
 }
@@ -83,6 +86,8 @@ export interface CreateAssetRequest {
   business_line?: string;
   importance_level?: 1 | 2 | 3;
   description?: string;
+  internet_facing?: boolean;
+  network_zone?: 'internal' | 'dmz' | 'production' | 'ot' | 'test';
 }
 
 // Vulnerability Types
@@ -158,6 +163,13 @@ export interface Vulnerability {
   paused_seconds?: number;
   response_overdue?: boolean;
   fix_overdue?: boolean;
+  // Risk snapshot; null until the vulnerability has been scored.
+  risk_score?: number | null;
+  risk_priority?: '' | 'P1' | 'P2' | 'P3' | 'P4';
+  risk_priority_text?: string;
+  risk_epss?: number | null;
+  risk_kev?: boolean;
+  risk_scored_at?: string | null;
 }
 
 export interface CreateVulnerabilityRequest {
@@ -260,6 +272,11 @@ export interface VulnerabilitySearchParams extends SearchParams {
   start_date?: string; // Filter by date range
   end_date?: string; // Filter by date range
   sla_status?: '' | 'overdue' | 'paused' | 'within';
+  risk_priority?: '' | 'P1' | 'P2' | 'P3' | 'P4';
+  min_risk_score?: number;
+  kev_only?: boolean;
+  sort_by?: 'created_at' | 'risk_score';
+  sort_order?: 'asc' | 'desc';
 }
 
 export interface ReportSearchParams extends SearchParams {

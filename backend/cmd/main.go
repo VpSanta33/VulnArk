@@ -125,6 +125,13 @@ func main() {
 			}
 		}
 	}()
+	// The pass scores vulnerabilities that predate the risk columns and, when
+	// enabled, refreshes the EPSS/KEV caches. Feed failures are only logged.
+	riskDone := make(chan struct{})
+	go func() {
+		defer close(riskDone)
+		_ = app.ThreatIntelService.Run(ctx)
+	}()
 	workerDone := make(chan struct{})
 	go func() {
 		defer close(workerDone)
@@ -170,6 +177,10 @@ func main() {
 	}
 	select {
 	case <-auditCleanupDone:
+	case <-shutdown.Done():
+	}
+	select {
+	case <-riskDone:
 	case <-shutdown.Done():
 	}
 }

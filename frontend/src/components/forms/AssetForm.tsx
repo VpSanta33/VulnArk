@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/Dialog';
 import { assetsService } from '../../services/assets';
 import { usersService } from '../../services/users';
 import { Asset, User } from '../../types/api';
+import { networkZones } from '../../lib/risk';
 
 const assetSchema = z.object({
   name: z.string().min(1, '资产名称不能为空').max(100, '资产名称不能超过100个字符'),
@@ -26,6 +27,8 @@ const assetSchema = z.object({
   business_line: z.string().optional(),
   importance_level: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   description: z.string().optional(),
+  internet_facing: z.boolean(),
+  network_zone: z.enum(['internal', 'dmz', 'production', 'ot', 'test']),
 });
 
 type AssetFormData = z.infer<typeof assetSchema>;
@@ -51,6 +54,8 @@ export function AssetForm({ isOpen, onClose, onSuccess, asset }: AssetFormProps)
     resolver: zodResolver(assetSchema),
     defaultValues: {
       importance_level: 3,
+      internet_facing: false,
+      network_zone: 'internal',
     },
   });
 
@@ -89,6 +94,8 @@ export function AssetForm({ isOpen, onClose, onSuccess, asset }: AssetFormProps)
           business_line: asset.business_line || '',
           importance_level: asset.importance_level || 3,
           description: asset.description || '',
+          internet_facing: !!asset.internet_facing,
+          network_zone: asset.network_zone || 'internal',
         });
       } else {
         // Create mode - reset to defaults
@@ -106,6 +113,8 @@ export function AssetForm({ isOpen, onClose, onSuccess, asset }: AssetFormProps)
           business_line: '',
           importance_level: 3,
           description: '',
+          internet_facing: false,
+          network_zone: 'internal',
         });
       }
       setError('');
@@ -309,7 +318,26 @@ export function AssetForm({ isOpen, onClose, onSuccess, asset }: AssetFormProps)
                 error={errors.importance_level?.message}
               />
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                网络区域
+              </label>
+              <Select
+                {...register('network_zone')}
+                options={networkZones}
+                error={errors.network_zone?.message}
+              />
+            </div>
+
+            <div className="flex items-end pb-2">
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <input type="checkbox" {...register('internet_facing')} />
+                对外暴露（互联网可访问）
+              </label>
+            </div>
           </div>
+          <p className="text-xs text-gray-500">重要程度、网络区域和对外暴露会计入该资产上漏洞的风险评分，保存后自动重算。</p>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">

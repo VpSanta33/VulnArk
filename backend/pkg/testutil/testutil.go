@@ -34,6 +34,7 @@ func NewTestDB(tests ...testing.TB) *gorm.DB {
 		&model.OWASPCategory{}, &model.Vulnerability{}, &model.VulnerabilityAttachment{},
 		&model.SLAPolicy{}, &model.VulnerabilityRetest{}, &model.VulnerabilityDuplicateLink{},
 		&model.VulnerabilityDuplicateIgnore{},
+		&model.RiskScoringConfig{}, &model.EPSSScore{}, &model.KEVEntry{}, &model.ThreatIntelSyncState{},
 	); err != nil {
 		_ = pool.Close()
 		panic("failed to migrate test database: " + err.Error())

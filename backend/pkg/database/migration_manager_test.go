@@ -434,3 +434,61 @@ func TestQueryIndexMigrationRepairsOlderSchemaWithoutChangingData(t *testing.T) 
 	}
 	require.NoError(t, m.RunMigrations())
 }
+
+func TestRiskMigrationUpgradesExistingDatabaseWithoutChangingData(t *testing.T) {
+	m := newMigrationTestManager(t)
+	require.NoError(t, m.RunMigrations())
+	asset := model.Asset{Name: "legacy-asset", Type: model.AssetTypeServer, ImportanceLevel: model.ImportanceLevelHigh, Status: 1}
+	require.NoError(t, m.db.Create(&asset).Error)
+	vulnerability := model.Vulnerability{Title: "legacy finding", AssetID: asset.ID, SeverityLevel: model.SeverityHigh, Status: model.StatusNew}
+	require.NoError(t, m.db.Create(&vulnerability).Error)
+
+	// Rewind to the schema that existed before the risk module.
+	for _, table := range []interface{}{&model.RiskScoringConfig{}, &model.EPSSScore{}, &model.KEVEntry{}, &model.ThreatIntelSyncState{}} {
+		require.NoError(t, m.db.Migrator().DropTable(table))
+	}
+	require.NoError(t, m.db.Migrator().DropIndex(&model.Vulnerability{}, "idx_vulnerability_risk_score"))
+	for _, column := range []string{"risk_score", "risk_priority", "risk_epss", "risk_kev", "risk_scored_at"} {
+		require.NoError(t, m.db.Migrator().DropColumn(&model.Vulnerability{}, column))
+	}
+	for _, column := range []string{"internet_facing", "network_zone"} {
+		require.NoError(t, m.db.Migrator().DropColumn(&model.Asset{}, column))
+	}
+	require.NoError(t, m.db.Exec("DELETE FROM permissions WHERE name = ?", "risk:manage").Error)
+	require.NoError(t, m.db.Exec("DELETE FROM schema_migrations WHERE version IN ?", []string{"2026111001", "2026111002"}).Error)
+	require.Error(t, m.CheckMigrations())
+
+	users := migrationCount(t, m.db, &model.User{})
+	require.NoError(t, m.RunMigrations())
+	require.NoError(t, m.CheckMigrations())
+	require.Equal(t, users, migrationCount(t, m.db, &model.User{}))
+	for _, table := range []interface{}{&model.RiskScoringConfig{}, &model.EPSSScore{}, &model.KEVEntry{}, &model.ThreatIntelSyncState{}} {
+		require.True(t, m.db.Migrator().HasTable(table))
+	}
+	require.True(t, m.db.Migrator().HasIndex(&model.Vulnerability{}, "idx_vulnerability_risk_score"))
+	require.EqualValues(t, 1, migrationCount(t, m.db.Where("name = ?", "risk:manage"), &model.Permission{}))
+
+	// Existing rows stay readable: unscored, internal and not internet-facing.
+	var storedAsset model.Asset
+	require.NoError(t, m.db.First(&storedAsset, asset.ID).Error)
+	require.False(t, storedAsset.InternetFacing)
+	require.Equal(t, model.NetworkZoneInternal, storedAsset.EffectiveNetworkZone())
+	require.Equal(t, model.ImportanceLevelHigh, storedAsset.ImportanceLevel)
+	var stored model.Vulnerability
+	require.NoError(t, m.db.First(&stored, vulnerability.ID).Error)
+	require.Equal(t, "legacy finding", stored.Title)
+	require.Nil(t, stored.RiskScore)
+	require.Nil(t, stored.RiskScoredAt)
+	require.False(t, stored.RiskKEV)
+
+	// The migration never grants the new permission to existing custom roles.
+	var roles []model.Role
+	require.NoError(t, m.db.Find(&roles).Error)
+	for _, role := range roles {
+		for _, permission := range role.Permissions {
+			require.NotEqual(t, "risk:manage", permission)
+		}
+	}
+	require.NoError(t, m.RunMigrations())
+	require.EqualValues(t, 1, migrationCount(t, m.db.Where("name = ?", "risk:manage"), &model.Permission{}))
+}

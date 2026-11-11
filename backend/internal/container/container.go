@@ -1,7 +1,10 @@
 package container
 
 import (
+	"time"
+
 	"gorm.io/gorm"
+	"vulnark/internal/config"
 	"vulnark/internal/controller"
 	"vulnark/internal/repository"
 	"vulnark/internal/service"
@@ -62,6 +65,8 @@ type Container struct {
 	TemplateService     service.TemplateService
 	SLAService          service.SLAService
 	RetestService       service.VulnerabilityRetestService
+	RiskService         service.RiskService
+	ThreatIntelService  service.ThreatIntelService
 
 	// Controllers
 	UserController         *controller.UserController
@@ -81,6 +86,7 @@ type Container struct {
 	APIVersionController   *controller.APIVersionController
 	SLAController          *controller.SLAController
 	RetestController       *controller.VulnerabilityRetestController
+	RiskController         *controller.RiskController
 }
 
 // NewContainer 创建新的依赖注入容器
@@ -150,6 +156,12 @@ func (c *Container) initServices() {
 	service.ConfigureVulnerabilitySLA(c.VulnService, c.SLAService)
 	service.ConfigureAssignmentSLA(c.AssignmentService, c.SLAService)
 	c.RetestService = service.NewVulnerabilityRetestService(repository.NewVulnerabilityRetestRepository(c.DB), c.VulnRepo, c.PermissionService)
+	riskRepo := repository.NewRiskRepository(c.DB)
+	c.RiskService = service.NewRiskService(riskRepo)
+	c.ThreatIntelService = service.NewThreatIntelService(riskRepo, c.RiskService, threatIntelOptions())
+	service.ConfigureRiskIntelNudge(c.RiskService, c.ThreatIntelService.Nudge)
+	service.ConfigureVulnerabilityRisk(c.VulnService, c.RiskService)
+	service.ConfigureAssetRisk(c.AssetService, c.RiskService)
 	c.SettingsService = service.NewSettingsService(c.UserRepo, c.SettingsRepo)
 	c.AIService = service.NewAIService(c.AIRepo)
 	c.AuditLogService = service.NewAuditLogService(c.AuditLogRepo)
@@ -166,6 +178,7 @@ func (c *Container) initControllers() {
 	c.VulnController.SetPermissionService(c.PermissionService)
 	c.SLAController = controller.NewSLAController(c.SLAService)
 	c.RetestController = controller.NewVulnerabilityRetestController(c.RetestService, c.StorageService)
+	c.RiskController = controller.NewRiskController(c.RiskService, c.ThreatIntelService)
 	c.RoleController = controller.NewRoleController(c.RoleService, c.PermissionService)
 	c.AnalyticsController = controller.NewAnalyticsController(c.AnalyticsService, c.PermissionService)
 	c.AssignmentController = controller.NewAssignmentController(c.AssignmentService)
@@ -178,4 +191,20 @@ func (c *Container) initControllers() {
 	c.AIController = controller.NewAIController(c.AIService)
 	c.APITestController = controller.NewAPITestController()
 	c.APIVersionController = controller.NewAPIVersionController()
+}
+
+// threatIntelOptions maps deployment configuration to the sync service. A
+// missing configuration (as in unit tests) leaves the sync disabled; scoring
+// itself never depends on it.
+func threatIntelOptions() service.ThreatIntelOptions {
+	if config.AppConfig == nil || !config.AppConfig.RiskIntel.Enabled {
+		return service.ThreatIntelOptions{}
+	}
+	cfg := config.AppConfig.RiskIntel
+	timeout := time.Duration(cfg.RequestTimeoutSeconds) * time.Second
+	return service.ThreatIntelOptions{
+		Enabled: true, EPSSAPIURL: cfg.EPSSAPIURL, KEVFeedURL: cfg.KEVFeedURL,
+		SyncInterval: time.Duration(cfg.SyncIntervalHours) * time.Hour, RequestTimeout: timeout,
+		Client: service.NewThreatIntelHTTPClient(timeout, config.AppConfig.Security.OutboundPrivateOrigins, cfg.EPSSAPIURL, cfg.KEVFeedURL),
+	}
 }
